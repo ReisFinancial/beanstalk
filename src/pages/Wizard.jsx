@@ -371,6 +371,8 @@ function StepFinances({ profile, updateSection }) {
           onChange={(v) => updateSection('finances', { liquidAssets: v })} />
         <MoneyField id="inv" label="Investments" value={f.investments}
           onChange={(v) => updateSection('finances', { investments: v })} />
+        <MoneyField id="re" label="Real estate (equity)" value={f.realEstate}
+          onChange={(v) => updateSection('finances', { realEstate: v })} />
         <MoneyField id="debts" label="Total debts (excl. mortgage)" value={f.debts}
           onChange={(v) => updateSection('finances', { debts: v })} />
       </div>

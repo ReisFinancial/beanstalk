@@ -15,11 +15,15 @@ const emptyProfile = {
   },
   goals: [], // { id, title, horizon, category }
   priorities: [], // ordered list of goal ids
+  assets: [], // { id, label, amount, note? }
+  liabilities: [], // { id, label, amount, note? }
+  snapshotSeeded: false, // true once we've seeded assets/liabilities from wizard finances
   finances: {
     monthlyIncome: '',
     monthlyExpenses: '',
     liquidAssets: '',
     investments: '',
+    realEstate: '',
     debts: '',
     riskTolerance: '', // low | medium | high
     savingsRate: '',
@@ -81,8 +85,130 @@ export function PlannerProvider({ children }) {
     setProfile((prev) => ({ ...(prev || emptyProfile), priorities }))
   }, [])
 
+  const addGoal = useCallback((goal) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      const next = { id: crypto.randomUUID(), ...goal }
+      return {
+        ...base,
+        goals: [...base.goals, next],
+        priorities: [...(base.priorities || []), next.id],
+      }
+    })
+  }, [])
+
+  const removeGoal = useCallback((id) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        goals: prev.goals.filter((g) => g.id !== id),
+        priorities: (prev.priorities || []).filter((x) => x !== id),
+      }
+    })
+  }, [])
+
+  const updateGoal = useCallback((id, patch) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        goals: (prev.goals || []).map((g) => (g.id === id ? { ...g, ...patch } : g)),
+      }
+    })
+  }, [])
+
+  const addAsset = useCallback((asset) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      return {
+        ...base,
+        assets: [...(base.assets || []), { id: crypto.randomUUID(), ...asset }],
+      }
+    })
+  }, [])
+
+  const removeAsset = useCallback((id) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      return { ...prev, assets: (prev.assets || []).filter((a) => a.id !== id) }
+    })
+  }, [])
+
+  const updateAsset = useCallback((id, patch) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        assets: (prev.assets || []).map((a) => (a.id === id ? { ...a, ...patch } : a)),
+      }
+    })
+  }, [])
+
+  const addLiability = useCallback((liability) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      return {
+        ...base,
+        liabilities: [...(base.liabilities || []), { id: crypto.randomUUID(), ...liability }],
+      }
+    })
+  }, [])
+
+  const removeLiability = useCallback((id) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      return { ...prev, liabilities: (prev.liabilities || []).filter((l) => l.id !== id) }
+    })
+  }, [])
+
+  const updateLiability = useCallback((id, patch) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        liabilities: (prev.liabilities || []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+      }
+    })
+  }, [])
+
+  // Seed assets/liabilities from wizard finances once, so the snapshot
+  // isn't empty the first time the user visits it.
+  const seedFromFinances = useCallback(() => {
+    setProfile((prev) => {
+      if (!prev || prev.snapshotSeeded) return prev
+      const assets = [...(prev.assets || [])]
+      const liabilities = [...(prev.liabilities || [])]
+      const liquid     = Number(prev.finances?.liquidAssets) || 0
+      const inv        = Number(prev.finances?.investments)  || 0
+      const realEstate = Number(prev.finances?.realEstate)   || 0
+      const debts      = Number(prev.finances?.debts)        || 0
+      if (liquid > 0)     assets.push({ id: crypto.randomUUID(), label: 'Liquid savings', amount: liquid,     note: 'From wizard' })
+      if (inv > 0)        assets.push({ id: crypto.randomUUID(), label: 'Investments',    amount: inv,        note: 'From wizard' })
+      if (realEstate > 0) assets.push({ id: crypto.randomUUID(), label: 'Real estate',    amount: realEstate, note: 'From wizard' })
+      if (debts > 0)      liabilities.push({ id: crypto.randomUUID(), label: 'Debts',     amount: debts,      note: 'From wizard' })
+      return { ...prev, assets, liabilities, snapshotSeeded: true }
+    })
+  }, [])
+
   const completeWizard = useCallback(() => {
-    setProfile((prev) => ({ ...(prev || emptyProfile), completedWizard: true }))
+    setProfile((prev) => {
+      if (!prev) return prev
+      // Seed hexes inline so they're ready the moment the dashboard opens.
+      const base = { ...prev, completedWizard: true }
+      if (base.snapshotSeeded) return base
+      const assets = [...(base.assets || [])]
+      const liabilities = [...(base.liabilities || [])]
+      const liquid     = Number(base.finances?.liquidAssets) || 0
+      const inv        = Number(base.finances?.investments)  || 0
+      const realEstate = Number(base.finances?.realEstate)   || 0
+      const debts      = Number(base.finances?.debts)        || 0
+      if (liquid > 0)     assets.push({ id: crypto.randomUUID(), label: 'Liquid savings', amount: liquid,     note: 'From wizard' })
+      if (inv > 0)        assets.push({ id: crypto.randomUUID(), label: 'Investments',    amount: inv,        note: 'From wizard' })
+      if (realEstate > 0) assets.push({ id: crypto.randomUUID(), label: 'Real estate',    amount: realEstate, note: 'From wizard' })
+      if (debts > 0)      liabilities.push({ id: crypto.randomUUID(), label: 'Debts',     amount: debts,      note: 'From wizard' })
+      return { ...base, assets, liabilities, snapshotSeeded: true }
+    })
   }, [])
 
   const resetProfile = useCallback(() => {
@@ -96,10 +222,26 @@ export function PlannerProvider({ children }) {
       updateSection,
       setGoals,
       setPriorities,
+      addGoal,
+      removeGoal,
+      updateGoal,
+      addAsset,
+      removeAsset,
+      updateAsset,
+      addLiability,
+      removeLiability,
+      updateLiability,
+      seedFromFinances,
       completeWizard,
       resetProfile,
     }),
-    [profile, updateProfile, updateSection, setGoals, setPriorities, completeWizard, resetProfile],
+    [
+      profile, updateProfile, updateSection, setGoals, setPriorities,
+      addGoal, removeGoal, updateGoal,
+      addAsset, removeAsset, updateAsset,
+      addLiability, removeLiability, updateLiability,
+      seedFromFinances, completeWizard, resetProfile,
+    ],
   )
 
   return <PlannerContext.Provider value={value}>{children}</PlannerContext.Provider>

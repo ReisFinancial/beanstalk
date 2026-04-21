@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
+import Hex from '../components/Hex.jsx'
+import AddItemModal from '../components/AddItemModal.jsx'
 
 const CATEGORIES = {
   money:         { label: 'Money',         emoji: '💰', color: 'from-grape-400/20 to-grape-200/20' },
@@ -74,9 +76,30 @@ function NextStep({ icon, title, children }) {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const { profile } = usePlanner()
+  const {
+    profile,
+    addAsset, removeAsset, updateAsset,
+    addLiability, removeLiability, updateLiability,
+    addGoal, removeGoal, updateGoal,
+    seedFromFinances,
+  } = usePlanner()
   const [params] = useSearchParams()
-  const view = params.get('view') || 'home'
+  const rawView = params.get('view') || 'home'
+  // back-compat: old /dashboard?view=goals links land on the new snapshot tab
+  const view = rawView === 'goals' ? 'snapshot' : rawView
+
+  // Modal state for adding items on the snapshot view
+  const [addingType, setAddingType] = useState(null) // 'asset' | 'liability' | 'goal' | null
+  // Modal state for editing an existing hex — { type, item } | null
+  const [editing, setEditing] = useState(null)
+
+  // Seed assets/liabilities from wizard finances the first time we
+  // visit the snapshot view, so it isn't empty.
+  useEffect(() => {
+    if (view === 'snapshot' && profile && !profile.snapshotSeeded) {
+      seedFromFinances()
+    }
+  }, [view, profile, seedFromFinances])
 
   const greeting = useMemo(() => {
     const h = new Date().getHours()
@@ -95,11 +118,12 @@ export default function Dashboard() {
   const exp = Number(profile.finances.monthlyExpenses) || 0
   const cash = Number(profile.finances.liquidAssets) || 0
   const inv = Number(profile.finances.investments) || 0
+  const realEstate = Number(profile.finances.realEstate) || 0
   const debt = Number(profile.finances.debts) || 0
   const monthly = inc - exp
   const savingsRate = inc > 0 ? Math.round((monthly / inc) * 100) : null
   const runwayMonths = exp > 0 ? +(cash / exp).toFixed(1) : null
-  const netWorth = cash + inv - debt
+  const netWorth = cash + inv + realEstate - debt
 
   const rateTone = savingsRate === null ? 'default'
     : savingsRate >= 15 ? 'good'
@@ -139,27 +163,23 @@ export default function Dashboard() {
 
   // ----- View switches -------------------------------------------------
 
-  if (view === 'goals') {
-    return (
-      <div className="space-y-6">
-        <Header view="goals" />
-        <section>
-          <h2 className="font-display text-lg font-bold mb-3">All goals</h2>
-          {profile.goals.length === 0 ? (
-            <EmptyGoals />
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {(profile.priorities.length ? profile.priorities : profile.goals.map((g) => g.id))
-                .map((id, i) => {
-                  const g = profile.goals.find((x) => x.id === id)
-                  if (!g) return null
-                  return <GoalCard key={g.id} goal={g} rank={i + 1} />
-                })}
-            </div>
-          )}
-        </section>
-      </div>
-    )
+  if (view === 'snapshot') {
+    return <SnapshotView
+      profile={profile}
+      addingType={addingType}
+      setAddingType={setAddingType}
+      editing={editing}
+      setEditing={setEditing}
+      addAsset={addAsset}
+      removeAsset={removeAsset}
+      updateAsset={updateAsset}
+      addLiability={addLiability}
+      removeLiability={removeLiability}
+      updateLiability={updateLiability}
+      addGoal={addGoal}
+      removeGoal={removeGoal}
+      updateGoal={updateGoal}
+    />
   }
 
   if (view === 'money') {
@@ -178,9 +198,10 @@ export default function Dashboard() {
             hint={runwayMonths === null ? 'Add savings & expenses' : runwayMonths >= 6 ? 'Well covered' : runwayMonths >= 3 ? 'Getting there' : 'Build the cushion'}
             tone={runwayTone} />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard label="Liquid savings" value={fmtMoney(cash)} />
           <StatCard label="Investments"    value={fmtMoney(inv)} />
+          <StatCard label="Real estate"    value={fmtMoney(realEstate)} />
           <StatCard label="Debts"          value={fmtMoney(debt)}
             tone={debt > 0 ? 'warn' : 'default'} />
           <StatCard label="Net position"   value={fmtMoney(netWorth)} hint="Assets minus debts" />
@@ -262,10 +283,10 @@ export default function Dashboard() {
 
 function Header({ view, greeting, name }) {
   const titles = {
-    home:    { h: greeting ? `${greeting}, ${name || 'friend'}` : 'Dashboard', s: "Here's the shape of your plan today." },
-    goals:   { h: 'Your goals',       s: 'All of them, ranked by what matters most.' },
-    money:   { h: 'Your money',       s: 'A live view of the numbers you shared.' },
-    profile: { h: 'Your profile',     s: 'The context we use to personalize things.' },
+    home:     { h: greeting ? `${greeting}, ${name || 'friend'}` : 'Dashboard', s: "Here's the shape of your plan today." },
+    snapshot: { h: 'Snapshot',       s: 'Your assets, liabilities, and goals — one hex at a time.' },
+    money:    { h: 'Your money',     s: 'A live view of the numbers you shared.' },
+    profile:  { h: 'Your profile',   s: 'The context we use to personalize things.' },
   }
   const t = titles[view] || titles.home
   return (
@@ -290,6 +311,213 @@ function EmptyGoals() {
     <div className="card text-center">
       <p className="text-ink-500">No goals yet.</p>
       <Link to="/wizard" className="btn-primary mt-3 inline-flex">Add some in the wizard</Link>
+    </div>
+  )
+}
+
+// ----- Snapshot (hex grid) ----------------------------------------------
+
+const SNAPSHOT_FILTERS = [
+  { id: 'all',         label: 'All',         tone: 'ink' },
+  { id: 'assets',      label: 'Assets',      tone: 'brand' },
+  { id: 'liabilities', label: 'Liabilities', tone: 'red' },
+  { id: 'goals',       label: 'Goals',       tone: 'slate' },
+]
+
+const GOAL_CAT_EMOJI = {
+  money: '💰', career: '🧑‍💻', health: '💪',
+  learning: '📚', relationships: '❤️', lifestyle: '🌿',
+}
+const HORIZON_LABEL = { short: '0–1 yr', mid: '1–3 yrs', long: '3+ yrs' }
+
+function SnapshotView({
+  profile,
+  addingType, setAddingType,
+  editing, setEditing,
+  addAsset, removeAsset, updateAsset,
+  addLiability, removeLiability, updateLiability,
+  addGoal, removeGoal, updateGoal,
+}) {
+  const [filter, setFilter] = useState('all')
+
+  const assets = profile.assets || []
+  const liabilities = profile.liabilities || []
+  const goals = profile.goals || []
+
+  const totalAssets = assets.reduce((s, a) => s + (Number(a.amount) || 0), 0)
+  const totalLiabilities = liabilities.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  const netWorth = totalAssets - totalLiabilities
+
+  const showAssets      = filter === 'all' || filter === 'assets'
+  const showLiabilities = filter === 'all' || filter === 'liabilities'
+  const showGoals       = filter === 'all' || filter === 'goals'
+
+  // Add: new signature is (type, payload)
+  const handleAddSubmit = (type, payload) => {
+    if (type === 'asset') addAsset(payload)
+    else if (type === 'liability') addLiability(payload)
+    else if (type === 'goal') addGoal(payload)
+    setAddingType(null)
+  }
+
+  // Edit: update in place when classification is unchanged, otherwise
+  // remove from the old bucket and add to the new one.
+  const handleEditSubmit = (newType, payload) => {
+    if (!editing) return
+    const { type: oldType, item } = editing
+    if (newType === oldType) {
+      if (newType === 'asset')     updateAsset(item.id, payload)
+      else if (newType === 'liability') updateLiability(item.id, payload)
+      else if (newType === 'goal') updateGoal(item.id, payload)
+    } else {
+      if (oldType === 'asset')     removeAsset(item.id)
+      else if (oldType === 'liability') removeLiability(item.id)
+      else if (oldType === 'goal') removeGoal(item.id)
+      if (newType === 'asset')     addAsset(payload)
+      else if (newType === 'liability') addLiability(payload)
+      else if (newType === 'goal') addGoal(payload)
+    }
+    setEditing(null)
+  }
+
+  const handleEditDelete = () => {
+    if (!editing) return
+    const { type, item } = editing
+    if (type === 'asset')     removeAsset(item.id)
+    else if (type === 'liability') removeLiability(item.id)
+    else if (type === 'goal') removeGoal(item.id)
+    setEditing(null)
+  }
+
+  const isEmpty = assets.length + liabilities.length + goals.length === 0
+
+  return (
+    <div className="space-y-6">
+      <Header view="snapshot" />
+
+      {/* KPI strip */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="card bg-gradient-to-br from-brand-50 to-white border-brand-100">
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Assets</p>
+          <p className="mt-1 font-display text-2xl font-extrabold">{fmtMoney(totalAssets)}</p>
+          <p className="mt-1 text-xs text-ink-500">{assets.length} item{assets.length === 1 ? '' : 's'}</p>
+        </div>
+        <div className="card bg-gradient-to-br from-red-50 to-white border-red-100">
+          <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Liabilities</p>
+          <p className="mt-1 font-display text-2xl font-extrabold">{fmtMoney(totalLiabilities)}</p>
+          <p className="mt-1 text-xs text-ink-500">{liabilities.length} item{liabilities.length === 1 ? '' : 's'}</p>
+        </div>
+        <div className="card bg-card-gradient">
+          <p className="text-xs font-semibold uppercase tracking-wide text-grape-700">Net worth</p>
+          <p className={`mt-1 font-display text-2xl font-extrabold ${netWorth < 0 ? 'text-red-600' : ''}`}>
+            {fmtMoney(netWorth)}
+          </p>
+          <p className="mt-1 text-xs text-ink-500">Assets − liabilities</p>
+        </div>
+      </div>
+
+      {/* Filter + add buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter snapshot">
+          {SNAPSHOT_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              role="tab"
+              aria-selected={filter === f.id}
+              onClick={() => setFilter(f.id)}
+              className={`chip border ${
+                filter === f.id
+                  ? 'bg-grape-50 border-grape-400 text-grape-800'
+                  : 'bg-white border-slate-200 text-ink-500 hover:border-grape-300'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setAddingType('asset')}
+            className="btn-secondary !py-2 !px-4 text-sm border-brand-200 text-brand-700 hover:bg-brand-50"
+          >+ Asset</button>
+          <button
+            onClick={() => setAddingType('liability')}
+            className="btn-secondary !py-2 !px-4 text-sm border-red-200 text-red-700 hover:bg-red-50"
+          >+ Liability</button>
+          <button
+            onClick={() => setAddingType('goal')}
+            className="btn-secondary !py-2 !px-4 text-sm"
+          >+ Goal</button>
+        </div>
+      </div>
+
+      {/* Hex grid — tightly packed honeycomb (see .honeycomb in index.css) */}
+      <div className="honeycomb">
+        {showAssets && assets.map((a) => (
+          <Hex
+            key={a.id}
+            tone="asset"
+            as="button"
+            icon="🟢"
+            title={a.label}
+            subtitle={fmtMoney(a.amount)}
+            onClick={() => setEditing({ type: 'asset', item: a })}
+            onRemove={() => removeAsset(a.id)}
+          />
+        ))}
+
+        {showLiabilities && liabilities.map((l) => (
+          <Hex
+            key={l.id}
+            tone="liability"
+            as="button"
+            icon="🔻"
+            title={l.label}
+            subtitle={fmtMoney(l.amount)}
+            onClick={() => setEditing({ type: 'liability', item: l })}
+            onRemove={() => removeLiability(l.id)}
+          />
+        ))}
+
+        {showGoals && goals.map((g) => (
+          <Hex
+            key={g.id}
+            tone="goal"
+            as="button"
+            icon={GOAL_CAT_EMOJI[g.category] || '🎯'}
+            title={g.title}
+            subtitle={HORIZON_LABEL[g.horizon] || ''}
+            onClick={() => setEditing({ type: 'goal', item: g })}
+            onRemove={() => removeGoal(g.id)}
+          />
+        ))}
+      </div>
+
+      {isEmpty && (
+        <p className="text-center text-sm text-ink-500">
+          Start by adding a hex for an asset you own, a debt you owe, or a goal you're chasing.
+        </p>
+      )}
+
+      {addingType && (
+        <AddItemModal
+          type={addingType}
+          mode="add"
+          onClose={() => setAddingType(null)}
+          onSubmit={handleAddSubmit}
+        />
+      )}
+
+      {editing && (
+        <AddItemModal
+          type={editing.type}
+          mode="edit"
+          initialValue={editing.item}
+          onClose={() => setEditing(null)}
+          onSubmit={handleEditSubmit}
+          onDelete={handleEditDelete}
+        />
+      )}
     </div>
   )
 }

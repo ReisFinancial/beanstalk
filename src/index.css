@@ -60,3 +60,91 @@ input[type='number']::-webkit-inner-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+@layer utilities {
+  /* Pointy-top hexagon — pair with aspect-[1/1.155] on the parent */
+  .hex-clip {
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  }
+  /* Inner inset version for "outlined" hexes (gives a ring effect) */
+  .hex-clip-inner {
+    clip-path: polygon(50% 3%, 97% 26%, 97% 74%, 50% 97%, 3% 74%, 3% 26%);
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Honeycomb layout — tightly-packed pointy-top hexagons with no gap.
+
+   Each breakpoint sets:
+     --hex-w / --hex-h  : hex box size (height ≈ width * 1.1547)
+     --row-step         : 0.75 * --hex-h  (vertical distance between rows; rows overlap)
+     --offset           : 0.5  * --hex-w  (horizontal offset for odd rows)
+     --cols             : how many hexes fit per row at this breakpoint
+
+   We offset alternating rows via :nth-child patterns that depend on the
+   column count (6n for 3 cols, 8n for 4 cols, 12n for 6 cols).
+   ------------------------------------------------------------------------- */
+.honeycomb {
+  --hex-w: 90px;
+  --hex-h: 104px;
+  --row-step: 78px;
+  --offset: 45px;
+  --cols: 3;
+
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--hex-w));
+  grid-auto-rows: var(--row-step);
+  justify-content: center;
+  gap: 0;
+  /* Extra bottom room because the last row extends past its row-step cell */
+  padding-bottom: calc(var(--hex-h) - var(--row-step));
+}
+
+.honeycomb > * {
+  width: var(--hex-w);
+  height: var(--hex-h);
+}
+
+/* 3-column mobile layout — offset the 2nd/4th/… rows */
+.honeycomb > :nth-child(6n + 4),
+.honeycomb > :nth-child(6n + 5),
+.honeycomb > :nth-child(6n) {
+  transform: translateX(var(--offset));
+}
+
+@media (min-width: 640px) {
+  .honeycomb {
+    --hex-w: 110px;
+    --hex-h: 127px;
+    --row-step: 95px;
+    --offset: 55px;
+    --cols: 4;
+  }
+  /* Clear the mobile 6n pattern, then apply 4-col 8n pattern */
+  .honeycomb > :nth-child(n) { transform: none; }
+  .honeycomb > :nth-child(8n + 5),
+  .honeycomb > :nth-child(8n + 6),
+  .honeycomb > :nth-child(8n + 7),
+  .honeycomb > :nth-child(8n) {
+    transform: translateX(var(--offset));
+  }
+}
+
+@media (min-width: 1024px) {
+  .honeycomb {
+    --hex-w: 120px;
+    --hex-h: 139px;
+    --row-step: 104px;
+    --offset: 60px;
+    --cols: 6;
+  }
+  .honeycomb > :nth-child(n) { transform: none; }
+  .honeycomb > :nth-child(12n + 7),
+  .honeycomb > :nth-child(12n + 8),
+  .honeycomb > :nth-child(12n + 9),
+  .honeycomb > :nth-child(12n + 10),
+  .honeycomb > :nth-child(12n + 11),
+  .honeycomb > :nth-child(12n) {
+    transform: translateX(var(--offset));
+  }
+}

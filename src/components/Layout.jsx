@@ -11,10 +11,10 @@ function Logo({ className = '' }) {
 }
 
 const navItems = [
-  { key: 'home',    to: '/dashboard',              label: 'Dashboard', icon: '🏡' },
-  { key: 'goals',   to: '/dashboard?view=goals',   label: 'Goals',     icon: '🎯' },
-  { key: 'money',   to: '/dashboard?view=money',   label: 'Money',     icon: '💸' },
-  { key: 'profile', to: '/dashboard?view=profile', label: 'Profile',   icon: '🙂' },
+  { key: 'home',     to: '/dashboard',                label: 'Dashboard', icon: '🏡' },
+  { key: 'snapshot', to: '/dashboard?view=snapshot',  label: 'Snapshot',  icon: '🔷' },
+  { key: 'money',    to: '/dashboard?view=money',     label: 'Money',     icon: '💸' },
+  { key: 'profile',  to: '/dashboard?view=profile',   label: 'Profile',   icon: '🙂' },
 ]
 
 export default function Layout() {
