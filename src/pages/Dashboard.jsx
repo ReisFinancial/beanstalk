@@ -5,6 +5,63 @@ import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 
+// ----- Future-value helpers --------------------------------------------
+
+// Cheap keyword-based fallback so wizard-seeded or pre-existing hexes
+// without an explicit subtype still get a reasonable rate.
+function inferSubtype(type, label) {
+  const s = (label || '').toLowerCase()
+  if (type === 'asset') {
+    if (/saving|chequing|checking|\bcash\b/.test(s)) return 'savings'
+    if (/retire|rrsp|401|pension/.test(s))           return 'retirement'
+    if (/real estate|property|home equity|house/.test(s)) return 'realEstate'
+    if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
+    return 'investments'
+  }
+  if (/credit card|visa|master|amex/.test(s))        return 'creditCard'
+  if (/line of credit|heloc|\bloc\b/.test(s))        return 'lineOfCredit'
+  if (/overdue|late/.test(s))                        return 'overdueBills'
+  if (/car|auto|vehicle/.test(s))                    return 'carLoan'
+  if (/mortgage/.test(s))                            return 'mortgage'
+  return 'creditCard'
+}
+
+function annualRatePct(type, item, rates) {
+  const scope = type === 'asset' ? 'asset' : 'liability'
+  const key   = item.subtype || inferSubtype(type, item.label)
+  return Number(rates?.[scope]?.[key]) || 0
+}
+
+/**
+ * Future value of a hex after `years` years.
+ *
+ * - PV compounds at the annual rate (`ratePct`, e.g. 6 for 6%).
+ * - `pmt` is a monthly contribution (asset) or monthly paydown (liability)
+ *   treated as an end-of-month annuity. The annual rate is split into a
+ *   monthly rate (r/12) to match the payment cadence.
+ * - For liabilities, payments subtract from the balance and we floor at $0
+ *   so the hex doesn't go negative once the loan is paid off.
+ */
+function futureValue(type, pv, ratePct, years, pmt = 0) {
+  const principal = Number(pv) || 0
+  const payment   = Number(pmt) || 0
+  if (years <= 0) return principal
+
+  const rAnnual  = (Number(ratePct) || 0) / 100
+  const rMonthly = rAnnual / 12
+  const n        = years * 12
+
+  const fvPrincipal = principal * Math.pow(1 + rMonthly, n)
+  const fvPayments = rMonthly === 0
+    ? payment * n
+    : payment * (Math.pow(1 + rMonthly, n) - 1) / rMonthly
+
+  if (type === 'liability') {
+    return Math.max(0, fvPrincipal - fvPayments)
+  }
+  return fvPrincipal + fvPayments
+}
+
 const CATEGORIES = {
   money:         { label: 'Money',         emoji: '💰', color: 'from-grape-400/20 to-grape-200/20' },
   career:        { label: 'Career',        emoji: '🧑‍💻', color: 'from-brand-400/20 to-brand-200/20' },
@@ -81,6 +138,8 @@ export default function Dashboard() {
     addAsset, removeAsset, updateAsset,
     addLiability, removeLiability, updateLiability,
     addGoal, removeGoal, updateGoal,
+    updateRate,
+    updateSection,
     seedFromFinances,
   } = usePlanner()
   const [params] = useSearchParams()
@@ -198,14 +257,10 @@ export default function Dashboard() {
             hint={runwayMonths === null ? 'Add savings & expenses' : runwayMonths >= 6 ? 'Well covered' : runwayMonths >= 3 ? 'Getting there' : 'Build the cushion'}
             tone={runwayTone} />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <StatCard label="Liquid savings" value={fmtMoney(cash)} />
-          <StatCard label="Investments"    value={fmtMoney(inv)} />
-          <StatCard label="Real estate"    value={fmtMoney(realEstate)} />
-          <StatCard label="Debts"          value={fmtMoney(debt)}
-            tone={debt > 0 ? 'warn' : 'default'} />
-          <StatCard label="Net position"   value={fmtMoney(netWorth)} hint="Assets minus debts" />
-        </div>
+        <ContributionsCard profile={profile} updateSection={updateSection} />
+
+        <RatesCard rates={profile.rates} updateRate={updateRate} />
+
         <div className="card">
           <h3 className="font-display font-bold">Risk tolerance</h3>
           <p className="text-sm text-ink-500 mt-1 capitalize">
@@ -306,6 +361,225 @@ function Info({ k, v }) {
   )
 }
 
+// ----- Monthly contributions (Money view) --------------------------------
+
+function ContributionsCard({ profile, updateSection }) {
+  const income           = Number(profile.finances?.monthlyIncome)    || 0
+  const bareNecessities  = Number(profile.finances?.bareNecessities)  || 0
+
+  // Wealth generation = every hex's monthly contribution / payment
+  const wealthGen = (
+    (profile.assets || []).reduce((s, a) => s + (Number(a.monthlyPayment) || 0), 0) +
+    (profile.liabilities || []).reduce((s, l) => s + (Number(l.monthlyPayment) || 0), 0)
+  )
+
+  const allocated = wealthGen + bareNecessities
+  const discretionary = Math.max(0, income - allocated)
+  const overSpent = income > 0 && allocated > income
+  const shortfall = overSpent ? allocated - income : 0
+
+  // Share of income (falls back to allocated total when income is missing)
+  const denom = income > 0 ? income : Math.max(allocated, 1)
+  const pct = (v) => Math.round((v / denom) * 100)
+
+  const rows = [
+    {
+      key: 'wealth',
+      label: 'Wealth Generation',
+      amount: wealthGen,
+      pct: pct(wealthGen),
+      hint: 'Sum of every hex\'s monthly contribution or payment on the Snapshot.',
+      bar: 'bg-brand-500',
+      dot: 'bg-brand-500',
+    },
+    {
+      key: 'necessities',
+      label: 'Bare Necessities',
+      amount: bareNecessities,
+      pct: pct(bareNecessities),
+      hint: 'Fixed expenditures — rent, utilities, insurance, groceries.',
+      bar: 'bg-amber-500',
+      dot: 'bg-amber-500',
+      editable: true,
+    },
+    {
+      key: 'discretionary',
+      label: 'Discretionary Spending',
+      amount: discretionary,
+      pct: pct(discretionary),
+      hint: overSpent
+        ? `Over-allocated by ${fmtMoney(shortfall)} — trim somewhere or increase income.`
+        : 'What\'s left over after the above — eating out, hobbies, travel.',
+      bar: 'bg-grape-500',
+      dot: 'bg-grape-500',
+      warn: overSpent,
+    },
+  ]
+
+  return (
+    <div className="card">
+      <div className="flex items-baseline justify-between flex-wrap gap-2">
+        <h3 className="font-display font-bold text-lg">Monthly contributions</h3>
+        <p className="text-xs text-ink-500">
+          Income {fmtMoney(income)} · Allocated {fmtMoney(allocated)}
+        </p>
+      </div>
+
+      {/* Stacked bar */}
+      <div className="mt-4 h-3 w-full rounded-full bg-slate-100 overflow-hidden flex">
+        <div className="bg-brand-500"  style={{ width: `${Math.min(100, pct(wealthGen))}%` }} />
+        <div className="bg-amber-500"  style={{ width: `${Math.min(100, pct(bareNecessities))}%` }} />
+        <div className="bg-grape-500"  style={{ width: `${Math.min(100, pct(discretionary))}%` }} />
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {rows.map((r) => (
+          <div key={r.key} className="rounded-2xl bg-slate-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${r.dot}`} />
+                <p className="font-semibold truncate">{r.label}</p>
+              </div>
+              <div className="text-right">
+                <p className={`font-display font-extrabold ${r.warn ? 'text-red-600' : ''}`}>
+                  {fmtMoney(r.amount)}
+                </p>
+                <p className="text-[11px] text-ink-500">{r.pct}% of income</p>
+              </div>
+            </div>
+
+            <p className={`mt-1 text-xs ${r.warn ? 'text-red-600' : 'text-ink-500'}`}>
+              {r.hint}
+            </p>
+
+            {r.editable && (
+              <div className="relative mt-3">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  className="input pl-8 pr-12 bg-white"
+                  placeholder="0"
+                  value={profile.finances?.bareNecessities ?? ''}
+                  onChange={(e) => updateSection('finances', { bareNecessities: e.target.value })}
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">
+                  /mo
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ----- Rates (Money view) ------------------------------------------------
+
+const ASSET_RATE_FIELDS = [
+  { key: 'savings',     label: 'Savings',                    hint: 'High-yield / chequing APY' },
+  { key: 'retirement',  label: 'Retirement investments',     hint: 'RRSP, 401(k), pension' },
+  { key: 'investments', label: 'Investments',                hint: 'Brokerage, TFSA, taxable' },
+  { key: 'realEstate',  label: 'Capital gains on real estate', hint: 'Annual appreciation %' },
+  { key: 'crypto',      label: 'Gains on crypto',            hint: 'Expected annual return' },
+]
+
+const LIABILITY_RATE_FIELDS = [
+  { key: 'creditCard',   label: 'Credit cards',    hint: 'APR on balances carried' },
+  { key: 'lineOfCredit', label: 'Line of credit',  hint: 'HELOC / unsecured LOC rate' },
+  { key: 'overdueBills', label: 'Overdue bills',   hint: 'Late-fee interest rate' },
+  { key: 'carLoan',      label: 'Car loans',       hint: 'Auto financing APR' },
+  { key: 'mortgage',     label: 'Mortgage',        hint: 'Current mortgage rate' },
+]
+
+function RateField({ label, hint, value, onChange, accent }) {
+  return (
+    <div>
+      <label className="label flex items-baseline justify-between gap-2">
+        <span>{label}</span>
+        {hint && <span className="text-[11px] font-normal text-ink-400">{hint}</span>}
+      </label>
+      <div className="relative">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          min="0"
+          className={`input pr-10 ${accent || ''}`}
+          placeholder="0.0"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 font-semibold">%</span>
+      </div>
+    </div>
+  )
+}
+
+function RatesCard({ rates, updateRate }) {
+  const assetRates     = rates?.asset     || {}
+  const liabilityRates = rates?.liability || {}
+
+  return (
+    <div className="card">
+      <div className="flex items-baseline justify-between flex-wrap gap-2">
+        <h3 className="font-display font-bold text-lg">Growth & interest rates</h3>
+        <p className="text-xs text-ink-500">
+          Applied per type. We'll use these to project future values on your Snapshot.
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-8 md:grid-cols-2">
+        {/* Assets column */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="h-2 w-2 rounded-full bg-brand-500" />
+            <h4 className="font-display font-bold text-brand-700 uppercase text-xs tracking-wider">
+              Assets · ROI
+            </h4>
+          </div>
+          <div className="space-y-4">
+            {ASSET_RATE_FIELDS.map((f) => (
+              <RateField
+                key={f.key}
+                label={f.label}
+                hint={f.hint}
+                value={assetRates[f.key]}
+                onChange={(v) => updateRate('asset', f.key, v)}
+                accent="focus:ring-brand-400"
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Liabilities column */}
+        <div className="md:border-l md:border-slate-100 md:pl-8">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+            <h4 className="font-display font-bold text-red-700 uppercase text-xs tracking-wider">
+              Liabilities · Interest
+            </h4>
+          </div>
+          <div className="space-y-4">
+            {LIABILITY_RATE_FIELDS.map((f) => (
+              <RateField
+                key={f.key}
+                label={f.label}
+                hint={f.hint}
+                value={liabilityRates[f.key]}
+                onChange={(v) => updateRate('liability', f.key, v)}
+                accent="focus:ring-red-400"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function EmptyGoals() {
   return (
     <div className="card text-center">
@@ -340,12 +614,47 @@ function SnapshotView({
 }) {
   const [filter, setFilter] = useState('all')
 
+  // Projection controls
+  const [unit, setUnit]       = useState('years') // 'months' | 'years'
+  const [periods, setPeriods] = useState(0)
+  const years = unit === 'months' ? periods / 12 : periods
+
   const assets = profile.assets || []
   const liabilities = profile.liabilities || []
   const goals = profile.goals || []
+  const rates = profile.rates
 
-  const totalAssets = assets.reduce((s, a) => s + (Number(a.amount) || 0), 0)
-  const totalLiabilities = liabilities.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  // Projected values per hex — recompute only when inputs change
+  const projectedAssets = useMemo(() =>
+    assets.map((a) => ({
+      ...a,
+      projected: futureValue(
+        'asset',
+        a.amount,
+        annualRatePct('asset', a, rates),
+        years,
+        a.monthlyPayment,
+      ),
+    })),
+    [assets, rates, years],
+  )
+  const projectedLiabilities = useMemo(() =>
+    liabilities.map((l) => ({
+      ...l,
+      projected: futureValue(
+        'liability',
+        l.amount,
+        annualRatePct('liability', l, rates),
+        years,
+        l.monthlyPayment,
+      ),
+    })),
+    [liabilities, rates, years],
+  )
+
+  // KPI totals use the projected values so they also slide with the bar
+  const totalAssets      = projectedAssets.reduce((s, a) => s + a.projected, 0)
+  const totalLiabilities = projectedLiabilities.reduce((s, l) => s + l.projected, 0)
   const netWorth = totalAssets - totalLiabilities
 
   const showAssets      = filter === 'all' || filter === 'assets'
@@ -453,27 +762,27 @@ function SnapshotView({
 
       {/* Hex grid — tightly packed honeycomb (see .honeycomb in index.css) */}
       <div className="honeycomb">
-        {showAssets && assets.map((a) => (
+        {showAssets && projectedAssets.map((a) => (
           <Hex
             key={a.id}
             tone="asset"
             as="button"
             icon="🟢"
             title={a.label}
-            subtitle={fmtMoney(a.amount)}
+            subtitle={fmtMoney(a.projected)}
             onClick={() => setEditing({ type: 'asset', item: a })}
             onRemove={() => removeAsset(a.id)}
           />
         ))}
 
-        {showLiabilities && liabilities.map((l) => (
+        {showLiabilities && projectedLiabilities.map((l) => (
           <Hex
             key={l.id}
             tone="liability"
             as="button"
             icon="🔻"
             title={l.label}
-            subtitle={fmtMoney(l.amount)}
+            subtitle={fmtMoney(l.projected)}
             onClick={() => setEditing({ type: 'liability', item: l })}
             onRemove={() => removeLiability(l.id)}
           />
@@ -499,6 +808,15 @@ function SnapshotView({
         </p>
       )}
 
+      {/* Projection slider — drives FV math for every hex above */}
+      {!isEmpty && (
+        <ProjectionSlider
+          unit={unit} setUnit={setUnit}
+          periods={periods} setPeriods={setPeriods}
+          projectedNet={netWorth}
+        />
+      )}
+
       {addingType && (
         <AddItemModal
           type={addingType}
@@ -518,6 +836,78 @@ function SnapshotView({
           onDelete={handleEditDelete}
         />
       )}
+    </div>
+  )
+}
+
+// Slider that drives the future-value projection across every hex.
+function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet }) {
+  const max = unit === 'months' ? 60 : 40
+  const suffix = unit === 'months' ? 'mo' : (periods === 1 ? 'yr' : 'yrs')
+  const label = periods === 0 ? 'Today' : `${periods} ${suffix}`
+
+  const switchUnit = (next) => {
+    if (next === unit) return
+    // Keep the slider visually close to where it was when toggling unit.
+    if (next === 'years' && unit === 'months') {
+      setPeriods(Math.round(periods / 12))
+    } else if (next === 'months' && unit === 'years') {
+      setPeriods(Math.min(60, periods * 12))
+    }
+    setUnit(next)
+  }
+
+  return (
+    <div className="card">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-display font-bold text-lg">Project into the future</h3>
+          <p className="text-xs text-ink-500 mt-0.5">
+            Each hex compounds at its type's rate from the Money page.
+          </p>
+        </div>
+        <div className="inline-flex bg-slate-100 rounded-full p-1 text-sm font-semibold">
+          {['months', 'years'].map((u) => (
+            <button
+              key={u}
+              type="button"
+              onClick={() => switchUnit(u)}
+              className={`px-3 py-1 rounded-full transition ${
+                unit === u
+                  ? 'bg-white text-ink-900 shadow-soft'
+                  : 'text-ink-500 hover:text-ink-700'
+              }`}
+            >
+              {u[0].toUpperCase() + u.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-baseline justify-between gap-3">
+        <span className="font-display text-3xl font-extrabold text-grape-700">{label}</span>
+        <span className="text-xs text-ink-500 text-right">
+          Projected net worth
+          <span className={`ml-2 font-display font-bold ${projectedNet < 0 ? 'text-red-600' : 'text-ink-900'}`}>
+            {fmtMoney(projectedNet)}
+          </span>
+        </span>
+      </div>
+
+      <input
+        type="range"
+        min="0"
+        max={max}
+        step="1"
+        value={periods}
+        onChange={(e) => setPeriods(Number(e.target.value))}
+        className="w-full mt-3 accent-grape-600"
+        aria-label={`Projection horizon in ${unit}`}
+      />
+      <div className="flex justify-between text-[11px] text-ink-400 mt-1">
+        <span>Today</span>
+        <span>{max} {unit === 'months' ? 'mo' : 'yrs'}</span>
+      </div>
     </div>
   )
 }

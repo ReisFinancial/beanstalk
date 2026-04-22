@@ -21,12 +21,31 @@ const emptyProfile = {
   finances: {
     monthlyIncome: '',
     monthlyExpenses: '',
+    bareNecessities: '', // fixed monthly expenditures (rent, utilities, etc.)
     liquidAssets: '',
     investments: '',
     realEstate: '',
     debts: '',
     riskTolerance: '', // low | medium | high
     savingsRate: '',
+  },
+  // Typical return / interest rates applied per type. Values are percentages
+  // stored as strings (so the inputs stay controlled); Number() them at read time.
+  rates: {
+    asset: {
+      savings: '',
+      retirement: '',
+      investments: '',
+      realEstate: '',
+      crypto: '',
+    },
+    liability: {
+      creditCard: '',
+      lineOfCredit: '',
+      overdueBills: '',
+      carLoan: '',
+      mortgage: '',
+    },
   },
   preferences: {
     focusArea: '', // money | career | health | relationships | learning
@@ -172,6 +191,24 @@ export function PlannerProvider({ children }) {
     })
   }, [])
 
+  // Rates: update a single rate (scope = 'asset' | 'liability', key = type id)
+  const updateRate = useCallback((scope, key, value) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      const currentRates = base.rates || emptyProfile.rates
+      return {
+        ...base,
+        rates: {
+          ...currentRates,
+          [scope]: {
+            ...(currentRates[scope] || {}),
+            [key]: value,
+          },
+        },
+      }
+    })
+  }, [])
+
   // Seed assets/liabilities from wizard finances once, so the snapshot
   // isn't empty the first time the user visits it.
   const seedFromFinances = useCallback(() => {
@@ -183,10 +220,10 @@ export function PlannerProvider({ children }) {
       const inv        = Number(prev.finances?.investments)  || 0
       const realEstate = Number(prev.finances?.realEstate)   || 0
       const debts      = Number(prev.finances?.debts)        || 0
-      if (liquid > 0)     assets.push({ id: crypto.randomUUID(), label: 'Liquid savings', amount: liquid,     note: 'From wizard' })
-      if (inv > 0)        assets.push({ id: crypto.randomUUID(), label: 'Investments',    amount: inv,        note: 'From wizard' })
-      if (realEstate > 0) assets.push({ id: crypto.randomUUID(), label: 'Real estate',    amount: realEstate, note: 'From wizard' })
-      if (debts > 0)      liabilities.push({ id: crypto.randomUUID(), label: 'Debts',     amount: debts,      note: 'From wizard' })
+      if (liquid > 0)     assets.push({ id: crypto.randomUUID(), label: 'Liquid savings', amount: liquid,     subtype: 'savings',     note: 'From wizard' })
+      if (inv > 0)        assets.push({ id: crypto.randomUUID(), label: 'Investments',    amount: inv,        subtype: 'investments', note: 'From wizard' })
+      if (realEstate > 0) assets.push({ id: crypto.randomUUID(), label: 'Real estate',    amount: realEstate, subtype: 'realEstate',  note: 'From wizard' })
+      if (debts > 0)      liabilities.push({ id: crypto.randomUUID(), label: 'Debts',     amount: debts,      subtype: 'creditCard',  note: 'From wizard' })
       return { ...prev, assets, liabilities, snapshotSeeded: true }
     })
   }, [])
@@ -203,10 +240,10 @@ export function PlannerProvider({ children }) {
       const inv        = Number(base.finances?.investments)  || 0
       const realEstate = Number(base.finances?.realEstate)   || 0
       const debts      = Number(base.finances?.debts)        || 0
-      if (liquid > 0)     assets.push({ id: crypto.randomUUID(), label: 'Liquid savings', amount: liquid,     note: 'From wizard' })
-      if (inv > 0)        assets.push({ id: crypto.randomUUID(), label: 'Investments',    amount: inv,        note: 'From wizard' })
-      if (realEstate > 0) assets.push({ id: crypto.randomUUID(), label: 'Real estate',    amount: realEstate, note: 'From wizard' })
-      if (debts > 0)      liabilities.push({ id: crypto.randomUUID(), label: 'Debts',     amount: debts,      note: 'From wizard' })
+      if (liquid > 0)     assets.push({ id: crypto.randomUUID(), label: 'Liquid savings', amount: liquid,     subtype: 'savings',     note: 'From wizard' })
+      if (inv > 0)        assets.push({ id: crypto.randomUUID(), label: 'Investments',    amount: inv,        subtype: 'investments', note: 'From wizard' })
+      if (realEstate > 0) assets.push({ id: crypto.randomUUID(), label: 'Real estate',    amount: realEstate, subtype: 'realEstate',  note: 'From wizard' })
+      if (debts > 0)      liabilities.push({ id: crypto.randomUUID(), label: 'Debts',     amount: debts,      subtype: 'creditCard',  note: 'From wizard' })
       return { ...base, assets, liabilities, snapshotSeeded: true }
     })
   }, [])
@@ -231,6 +268,7 @@ export function PlannerProvider({ children }) {
       addLiability,
       removeLiability,
       updateLiability,
+      updateRate,
       seedFromFinances,
       completeWizard,
       resetProfile,
@@ -240,7 +278,7 @@ export function PlannerProvider({ children }) {
       addGoal, removeGoal, updateGoal,
       addAsset, removeAsset, updateAsset,
       addLiability, removeLiability, updateLiability,
-      seedFromFinances, completeWizard, resetProfile,
+      updateRate, seedFromFinances, completeWizard, resetProfile,
     ],
   )
 

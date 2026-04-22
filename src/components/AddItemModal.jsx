@@ -20,6 +20,24 @@ const CLASSIFICATIONS = [
   { id: 'goal',      label: 'Goal',      emoji: '🎯' },
 ]
 
+// Subtypes line up with the rate fields on the Money page so each hex
+// can look up its own ROI / interest rate.
+const ASSET_SUBTYPES = [
+  { id: 'savings',     label: 'Savings' },
+  { id: 'retirement',  label: 'Retirement' },
+  { id: 'investments', label: 'Investments' },
+  { id: 'realEstate',  label: 'Real estate' },
+  { id: 'crypto',      label: 'Crypto' },
+]
+const LIABILITY_SUBTYPES = [
+  { id: 'creditCard',   label: 'Credit card' },
+  { id: 'lineOfCredit', label: 'Line of credit' },
+  { id: 'overdueBills', label: 'Overdue bills' },
+  { id: 'carLoan',      label: 'Car loan' },
+  { id: 'mortgage',     label: 'Mortgage' },
+]
+const DEFAULT_SUBTYPE = { asset: 'savings', liability: 'creditCard' }
+
 const META = {
   asset: {
     addH: 'Add an asset',    editH: 'Edit asset',
@@ -72,9 +90,31 @@ export default function AddItemModal({
       ? String(initialValue.amount)
       : '',
   )
+  const [monthlyPayment, setMonthlyPayment] = useState(
+    initialValue?.monthlyPayment !== undefined && initialValue.monthlyPayment !== null
+      ? String(initialValue.monthlyPayment)
+      : '',
+  )
+  // Asset/liability-only — picks which rate category applies
+  const [subtype, setSubtype] = useState(
+    initialValue?.subtype
+      || DEFAULT_SUBTYPE[initialType]
+      || 'savings',
+  )
   // Goal-only
   const [category, setCategory] = useState(initialValue?.category || 'money')
   const [horizon, setHorizon]   = useState(initialValue?.horizon  || 'mid')
+
+  // When the user reclassifies in edit mode, make sure the subtype stays
+  // valid for the new classification.
+  const handleClassChange = (newType) => {
+    setType(newType)
+    if (newType === 'asset' && !ASSET_SUBTYPES.some((s) => s.id === subtype)) {
+      setSubtype(DEFAULT_SUBTYPE.asset)
+    } else if (newType === 'liability' && !LIABILITY_SUBTYPES.some((s) => s.id === subtype)) {
+      setSubtype(DEFAULT_SUBTYPE.liability)
+    }
+  }
 
   // Close on escape + focus first input
   useEffect(() => {
@@ -93,7 +133,9 @@ export default function AddItemModal({
     } else {
       const amt = Number(amount)
       if (!Number.isFinite(amt) || amt < 0) return
-      onSubmit(type, { label: trimmed, amount: amt })
+      const pmt = monthlyPayment === '' ? 0 : Number(monthlyPayment)
+      if (!Number.isFinite(pmt) || pmt < 0) return
+      onSubmit(type, { label: trimmed, amount: amt, subtype, monthlyPayment: pmt })
     }
   }
 
@@ -136,7 +178,7 @@ export default function AddItemModal({
                   <button
                     type="button"
                     key={c.id}
-                    onClick={() => setType(c.id)}
+                    onClick={() => handleClassChange(c.id)}
                     className={`chip border ${
                       type === c.id
                         ? 'bg-grape-50 border-grape-400 text-grape-800'
@@ -170,23 +212,75 @@ export default function AddItemModal({
           </div>
 
           {type !== 'goal' && (
-            <div>
-              <label className="label" htmlFor="item-amount">Amount</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
-                <input
-                  id="item-amount"
-                  type="number"
-                  inputMode="decimal"
-                  className="input pl-8"
-                  placeholder="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  min="0"
-                  required
-                />
+            <>
+              <div>
+                <label className="label" htmlFor="item-amount">Amount</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                  <input
+                    id="item-amount"
+                    type="number"
+                    inputMode="decimal"
+                    className="input pl-8"
+                    placeholder="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    min="0"
+                    required
+                  />
+                </div>
               </div>
-            </div>
+
+              <div>
+                <label className="label flex items-baseline justify-between gap-2" htmlFor="item-pmt">
+                  <span>
+                    {type === 'asset' ? 'Monthly contribution' : 'Monthly payment'}
+                    <span className="text-ink-400 font-normal ml-1">(optional)</span>
+                  </span>
+                  <span className="text-[11px] font-normal text-ink-400">
+                    {type === 'asset' ? 'Added each month' : 'Paid down each month'}
+                  </span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                  <input
+                    id="item-pmt"
+                    type="number"
+                    inputMode="decimal"
+                    className="input pl-8 pr-16"
+                    placeholder="0"
+                    value={monthlyPayment}
+                    onChange={(e) => setMonthlyPayment(e.target.value)}
+                    min="0"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">
+                    /mo
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <p className="label">
+                  Type <span className="text-ink-400 font-normal">(rate comes from Money page)</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(type === 'asset' ? ASSET_SUBTYPES : LIABILITY_SUBTYPES).map((s) => (
+                    <button
+                      type="button"
+                      key={s.id}
+                      onClick={() => setSubtype(s.id)}
+                      className={`chip border ${
+                        subtype === s.id
+                          ? 'bg-grape-50 border-grape-400 text-grape-800'
+                          : 'bg-white border-slate-200 text-ink-700'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
           {type === 'goal' && (
