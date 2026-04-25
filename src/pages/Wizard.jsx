@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
+import BeanstalkMark from '../components/BeanstalkMark.jsx'
 
 const STEPS = [
   { id: 'welcome',    title: 'Welcome',     emoji: '👋' },
@@ -110,9 +111,66 @@ function StepWelcome({ profile, updateSection }) {
   )
 }
 
+// Normalize lifeStage to an array — handles legacy string values lingering in
+// localStorage from before this field went multi-select.
+function asLifeStageArray(value) {
+  if (Array.isArray(value)) return value
+  if (typeof value === 'string' && value.trim()) return [value]
+  return []
+}
+
+// Country / region data ----------------------------------------------------
+
+const COUNTRIES = [
+  { id: 'CA', label: 'Canada',         regionLabel: 'Province' },
+  { id: 'US', label: 'United States',  regionLabel: 'State' },
+]
+
+// Build a friendly "Region, Country" string for display, with a graceful
+// fallback to any legacy freeform `location` string still on older profiles.
+export function formatLocation(personal) {
+  if (!personal) return ''
+  const country = COUNTRIES.find((c) => c.id === personal.country)?.label
+  const parts = []
+  if (personal.region) parts.push(personal.region)
+  if (country)         parts.push(country)
+  if (parts.length)    return parts.join(', ')
+  return personal.location || ''
+}
+
+const REGIONS_BY_COUNTRY = {
+  CA: [
+    'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick',
+    'Newfoundland and Labrador', 'Northwest Territories', 'Nova Scotia',
+    'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec',
+    'Saskatchewan', 'Yukon',
+  ],
+  US: [
+    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
+    'Connecticut', 'Delaware', 'District of Columbia', 'Florida', 'Georgia',
+    'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+    'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+    'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+    'New Hampshire', 'New Jersey', 'New Mexico', 'New York',
+    'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon',
+    'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
+    'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
+    'West Virginia', 'Wisconsin', 'Wyoming',
+  ],
+}
+
 function StepPersonal({ profile, updateSection }) {
   const ageRanges = ['Under 25', '25–34', '35–44', '45–54', '55–64', '65+']
   const stages = ['Student', 'Single / independent', 'In a relationship', 'Parent', 'Empty nester', 'Retired']
+  const selectedStages = asLifeStageArray(profile.personal.lifeStage)
+
+  const toggleStage = (s) => {
+    const next = selectedStages.includes(s)
+      ? selectedStages.filter((x) => x !== s)
+      : [...selectedStages, s]
+    updateSection('personal', { lifeStage: next })
+  }
+
   return (
     <div>
       <h2 className="font-display text-2xl font-extrabold">A bit about your life</h2>
@@ -133,29 +191,74 @@ function StepPersonal({ profile, updateSection }) {
           </div>
         </div>
         <div>
-          <p className="label">Life stage</p>
+          <p className="label">
+            Life stage <span className="text-ink-400 font-normal">(select all that apply)</span>
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {stages.map((s) => (
               <Choice
                 key={s}
-                selected={profile.personal.lifeStage === s}
-                onClick={() => updateSection('personal', { lifeStage: s })}
+                selected={selectedStages.includes(s)}
+                onClick={() => toggleStage(s)}
               >
                 {s}
               </Choice>
             ))}
           </div>
         </div>
-        <div>
-          <label className="label" htmlFor="loc">Location (optional)</label>
-          <input
-            id="loc"
-            className="input"
-            placeholder="City, Country"
-            value={profile.personal.location}
-            onChange={(e) => updateSection('personal', { location: e.target.value })}
-          />
-        </div>
+        <LocationFields
+          country={profile.personal.country}
+          region={profile.personal.region}
+          onChange={(patch) => updateSection('personal', patch)}
+        />
+      </div>
+    </div>
+  )
+}
+
+function LocationFields({ country, region, onChange }) {
+  const countryMeta = COUNTRIES.find((c) => c.id === country)
+  const regionLabel = countryMeta?.regionLabel || 'State / Province'
+  const regions = REGIONS_BY_COUNTRY[country] || []
+
+  const handleCountry = (next) => {
+    // Reset the region whenever the country changes so we don't
+    // leave behind a state from the previous country.
+    onChange({ country: next, region: '' })
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label className="label" htmlFor="country">Country (optional)</label>
+        <select
+          id="country"
+          className="input"
+          value={country || ''}
+          onChange={(e) => handleCountry(e.target.value)}
+        >
+          <option value="">Select a country…</option>
+          {COUNTRIES.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="label" htmlFor="region">{regionLabel}</label>
+        <select
+          id="region"
+          className="input disabled:bg-slate-50 disabled:text-ink-300"
+          value={region || ''}
+          disabled={!country}
+          onChange={(e) => onChange({ region: e.target.value })}
+        >
+          <option value="">
+            {country ? `Select a ${regionLabel.toLowerCase()}…` : 'Pick a country first'}
+          </option>
+          {regions.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
       </div>
     </div>
   )
@@ -438,6 +541,10 @@ function StepReview({ profile }) {
     .map((id) => profile.goals.find((g) => g.id === id))
     .filter(Boolean)
 
+  const stages = asLifeStageArray(profile.personal.lifeStage)
+  const stageLabel = stages.length ? stages.join(', ') : '—'
+  const locLabel = formatLocation(profile.personal)
+
   return (
     <div>
       <h2 className="font-display text-2xl font-extrabold">You're set ✨</h2>
@@ -447,8 +554,8 @@ function StepReview({ profile }) {
         <div className="card">
           <h3 className="font-bold">About you</h3>
           <p className="text-sm text-ink-500 mt-1">
-            {profile.personal.fullName || 'Anonymous'} · {profile.personal.ageRange || '—'} · {profile.personal.lifeStage || '—'}
-            {profile.personal.location ? ` · ${profile.personal.location}` : ''}
+            {profile.personal.fullName || 'Anonymous'} · {profile.personal.ageRange || '—'} · {stageLabel}
+            {locLabel ? ` · ${locLabel}` : ''}
           </p>
         </div>
         <div className="card">
@@ -503,7 +610,7 @@ export default function Wizard() {
     <div className="min-h-screen bg-slate-50">
       <header className="mx-auto max-w-3xl px-4 sm:px-6 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-xl bg-hero-gradient shadow-glow" />
+          <BeanstalkMark className="h-8 w-8 text-olive-600" />
           <span className="font-display text-xl font-extrabold tracking-tight">Beanstalk</span>
         </div>
         <span className="text-xs text-ink-500">Hi, {user?.username} 👋</span>

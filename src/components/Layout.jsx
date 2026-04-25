@@ -1,10 +1,11 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import BeanstalkMark from './BeanstalkMark.jsx'
 
 function Logo({ className = '' }) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="h-8 w-8 rounded-xl bg-hero-gradient shadow-glow" />
+      <BeanstalkMark className="h-8 w-8 text-olive-600" />
       <span className="font-display text-xl font-extrabold tracking-tight">Beanstalk</span>
     </div>
   )

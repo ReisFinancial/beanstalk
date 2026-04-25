@@ -39,6 +39,18 @@ export default {
           500: '#415a77',
           300: '#778da9',
         },
+        olive: {
+          50:  '#f6f7ee',
+          100: '#ebede0',
+          200: '#d4d9b6',
+          300: '#b8c186',
+          400: '#9aa758',
+          500: '#7e8e3d',
+          600: '#6b7c32',
+          700: '#556328',
+          800: '#444f23',
+          900: '#353d1d',
+        },
       },
       fontFamily: {
         sans: ['"Inter"', 'ui-sans-serif', 'system-ui', 'sans-serif'],

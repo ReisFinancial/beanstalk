@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import BeanstalkMark from '../components/BeanstalkMark.jsx'
 
 export default function Signup() {
   const { signup } = useAuth()
@@ -109,7 +110,7 @@ export function AuthShell({ title, subtitle, children, footer }) {
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-16 flex items-center">
         <Link to="/" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-xl bg-hero-gradient shadow-glow" />
+          <BeanstalkMark className="h-8 w-8 text-olive-600" />
           <span className="font-display text-xl font-extrabold tracking-tight">Beanstalk</span>
         </Link>
       </div>

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
+import { formatLocation } from './Wizard.jsx'
 
 // ----- Future-value helpers --------------------------------------------
 
@@ -289,8 +290,12 @@ export default function Dashboard() {
           </div>
           <dl className="mt-6 grid gap-3 sm:grid-cols-2 text-sm">
             <Info k="Age range" v={profile.personal.ageRange} />
-            <Info k="Life stage" v={profile.personal.lifeStage} />
-            <Info k="Location" v={profile.personal.location} />
+            <Info k="Life stage" v={
+              Array.isArray(profile.personal.lifeStage)
+                ? (profile.personal.lifeStage.length ? profile.personal.lifeStage.join(', ') : '')
+                : profile.personal.lifeStage
+            } />
+            <Info k="Location" v={formatLocation(profile.personal)} />
             <Info k="Focus area" v={CATEGORIES[profile.preferences.focusArea]?.label} />
           </dl>
         </div>

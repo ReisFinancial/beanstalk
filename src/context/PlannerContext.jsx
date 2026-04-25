@@ -10,8 +10,9 @@ const emptyProfile = {
   personal: {
     fullName: '',
     ageRange: '',
-    lifeStage: '',
-    location: '',
+    lifeStage: [], // multi-select — array of stage labels
+    country: '',   // 'CA' | 'US'
+    region: '',    // province (CA) or state (US)
   },
   goals: [], // { id, title, horizon, category }
   priorities: [], // ordered list of goal ids

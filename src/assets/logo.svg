@@ -1,0 +1,33 @@
+<svg viewBox="220 60 260 390" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="logoTitle logoDesc">
+  <title id="logoTitle">Beanstalk</title>
+  <desc id="logoDesc">A single-color monoline beanstalk: an S-curved central stem rising from a small sprout, two alternating leaves, and a soft tendril curl at the top.</desc>
+
+  <g fill="none"
+     stroke="#6b7c32"
+     stroke-width="14"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <!-- Ground line -->
+    <path d="M 220 430 L 460 430" />
+
+    <!-- Soil mound -->
+    <path d="M 290 430 Q 340 408 390 430" />
+
+    <!-- Main stem: S-curve -->
+    <path d="M 340 425 C 312 360, 388 320, 360 250 C 332 185, 388 150, 360 100" />
+
+    <!-- Lower-right leaf -->
+    <path d="M 360 330 C 410 312, 448 318, 472 290 C 460 332, 418 358, 372 348" />
+
+    <!-- Upper-left leaf -->
+    <path d="M 364 230 C 312 214, 270 220, 244 192 C 258 234, 300 260, 352 248" />
+
+    <!-- Upper-right leaf -->
+    <path d="M 370 160 C 412 144, 442 150, 460 128 C 450 164, 416 184, 380 176" />
+
+    <!-- Top tendril curl -->
+    <path d="M 360 100 C 360 80, 384 70, 392 88 C 398 102, 384 112, 372 104" />
+
+  </g>
+</svg>

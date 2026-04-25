@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import BeanstalkMark from '../components/BeanstalkMark.jsx'
 
 function Feature({ emoji, title, children }) {
   return (
@@ -15,7 +16,7 @@ export default function Landing() {
     <div className="min-h-screen bg-slate-50">
       <header className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-hero-gradient shadow-glow" />
+          <BeanstalkMark className="h-9 w-9 text-olive-600" />
           <span className="font-display text-xl font-extrabold tracking-tight">Beanstalk</span>
         </div>
         <div className="flex items-center gap-2">
