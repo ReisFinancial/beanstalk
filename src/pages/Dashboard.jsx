@@ -4,7 +4,13 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
+import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import { formatLocation } from './Wizard.jsx'
+
+// Asset subtypes treated as "liquid" when computing the wealth level.
+// Real estate and retirement are intentionally excluded — they're not
+// readily accessible.
+const LIQUID_SUBTYPES = new Set(['savings', 'investments', 'crypto'])
 
 // ----- Future-value helpers --------------------------------------------
 
@@ -662,6 +668,13 @@ function SnapshotView({
   const totalLiabilities = projectedLiabilities.reduce((s, l) => s + l.projected, 0)
   const netWorth = totalAssets - totalLiabilities
 
+  // Liquid net worth drives the wealth-level illustration. Liquid =
+  // savings, investments, and crypto only — minus all liabilities.
+  const liquidAssetsTotal = projectedAssets
+    .filter((a) => LIQUID_SUBTYPES.has(a.subtype || inferSubtype('asset', a.label)))
+    .reduce((s, a) => s + a.projected, 0)
+  const liquidNetWorth = liquidAssetsTotal - totalLiabilities
+
   const showAssets      = filter === 'all' || filter === 'assets'
   const showLiabilities = filter === 'all' || filter === 'liabilities'
   const showGoals       = filter === 'all' || filter === 'goals'
@@ -813,13 +826,16 @@ function SnapshotView({
         </p>
       )}
 
-      {/* Projection slider — drives FV math for every hex above */}
+      {/* Projection slider + wealth level — paired in a two-column row */}
       {!isEmpty && (
-        <ProjectionSlider
-          unit={unit} setUnit={setUnit}
-          periods={periods} setPeriods={setPeriods}
-          projectedNet={netWorth}
-        />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ProjectionSlider
+            unit={unit} setUnit={setUnit}
+            periods={periods} setPeriods={setPeriods}
+            projectedNet={netWorth}
+          />
+          <WealthLevelCard liquidNetWorth={liquidNetWorth} />
+        </div>
       )}
 
       {addingType && (
@@ -912,6 +928,46 @@ function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet }) 
       <div className="flex justify-between text-[11px] text-ink-400 mt-1">
         <span>Today</span>
         <span>{max} {unit === 'months' ? 'mo' : 'yrs'}</span>
+      </div>
+    </div>
+  )
+}
+
+// Olive monoline illustration showing the user's current wealth level
+// based on liquid net worth (savings + investments + crypto − liabilities).
+function WealthLevelCard({ liquidNetWorth }) {
+  const lvl = wealthLevel(liquidNetWorth)
+  const meta = WEALTH_LEVELS[lvl]
+
+  return (
+    <div className="card flex flex-col">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-display font-bold text-lg">Wealth level</h3>
+          <p className="text-xs text-ink-500 mt-0.5">
+            Where you sit based on liquid net worth.
+          </p>
+        </div>
+        <span className="chip border border-olive-200 bg-olive-50 text-olive-700">
+          {meta.label}
+        </span>
+      </div>
+
+      <div className="flex-1 grid place-items-center py-5">
+        <WealthMark
+          level={lvl}
+          className="h-28 w-40 text-olive-600"
+        />
+      </div>
+
+      <div className="mt-1 flex items-baseline justify-between gap-3">
+        <span className="font-display text-3xl font-extrabold text-olive-700">
+          {fmtMoney(liquidNetWorth)}
+        </span>
+        <span className="text-xs text-ink-500 text-right">
+          {meta.illustration}
+          <span className="block text-[11px] text-ink-400">{meta.range}</span>
+        </span>
       </div>
     </div>
   )
