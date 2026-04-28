@@ -5,12 +5,9 @@ import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
+import PrioritizeGoalsModal from '../components/PrioritizeGoalsModal.jsx'
 import { formatLocation } from './Wizard.jsx'
 
-// Asset subtypes treated as "liquid" when computing the wealth level.
-// Real estate and retirement are intentionally excluded — they're not
-// readily accessible.
-const LIQUID_SUBTYPES = new Set(['savings', 'investments', 'crypto'])
 
 // ----- Future-value helpers --------------------------------------------
 
@@ -148,6 +145,7 @@ export default function Dashboard() {
     updateRate,
     updateSection,
     seedFromFinances,
+    setPriorities,
   } = usePlanner()
   const [params] = useSearchParams()
   const rawView = params.get('view') || 'home'
@@ -158,6 +156,8 @@ export default function Dashboard() {
   const [addingType, setAddingType] = useState(null) // 'asset' | 'liability' | 'goal' | null
   // Modal state for editing an existing hex — { type, item } | null
   const [editing, setEditing] = useState(null)
+  // Goal prioritization modal (home view)
+  const [prioritizing, setPrioritizing] = useState(false)
 
   // Seed assets/liabilities from wizard finances the first time we
   // visit the snapshot view, so it isn't empty.
@@ -322,6 +322,12 @@ export default function Dashboard() {
         <StatCard label="Net position"   value={fmtMoney(netWorth)} />
       </div>
 
+      {/* Decision-making CTA — opens the prioritization modal */}
+      <PrioritizeCTA
+        goalCount={(profile.goals || []).length}
+        onClick={() => setPrioritizing(true)}
+      />
+
       <section>
         <div className="flex items-end justify-between mb-3">
           <h2 className="font-display text-lg font-bold">Your top 3 focus</h2>
@@ -343,6 +349,47 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+
+      {prioritizing && (
+        <PrioritizeGoalsModal
+          goals={profile.goals || []}
+          onClose={() => setPrioritizing(false)}
+          onSave={(orderedIds) => {
+            setPriorities(orderedIds)
+            setPrioritizing(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Banner CTA on the dashboard home that opens the prioritization modal.
+function PrioritizeCTA({ goalCount, onClick }) {
+  const disabled = goalCount === 0
+  return (
+    <div className="card bg-gradient-to-br from-olive-50 to-white border-olive-200">
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className="h-12 w-12 shrink-0 rounded-2xl bg-olive-100 grid place-items-center text-2xl">
+          🧭
+        </div>
+        <div className="flex-1 min-w-[14rem]">
+          <h3 className="font-display font-extrabold text-lg">Decide your top 3 focus</h3>
+          <p className="text-sm text-ink-500 mt-0.5">
+            Rate your goals across five dimensions — peace of mind, daily life impact,
+            flexibility, identity fit, and financial safety — and let Beanstalk score them.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={disabled}
+          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          title={disabled ? 'Add goals first to prioritize them' : undefined}
+        >
+          Prioritize goals
+        </button>
+      </div>
     </div>
   )
 }
@@ -668,12 +715,6 @@ function SnapshotView({
   const totalLiabilities = projectedLiabilities.reduce((s, l) => s + l.projected, 0)
   const netWorth = totalAssets - totalLiabilities
 
-  // Liquid net worth drives the wealth-level illustration. Liquid =
-  // savings, investments, and crypto only — minus all liabilities.
-  const liquidAssetsTotal = projectedAssets
-    .filter((a) => LIQUID_SUBTYPES.has(a.subtype || inferSubtype('asset', a.label)))
-    .reduce((s, a) => s + a.projected, 0)
-  const liquidNetWorth = liquidAssetsTotal - totalLiabilities
 
   const showAssets      = filter === 'all' || filter === 'assets'
   const showLiabilities = filter === 'all' || filter === 'liabilities'
@@ -834,7 +875,7 @@ function SnapshotView({
             periods={periods} setPeriods={setPeriods}
             projectedNet={netWorth}
           />
-          <WealthLevelCard liquidNetWorth={liquidNetWorth} />
+          <WealthLevelCard netWorth={netWorth} />
         </div>
       )}
 
@@ -933,10 +974,11 @@ function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet }) 
   )
 }
 
-// Olive monoline illustration showing the user's current wealth level
-// based on liquid net worth (savings + investments + crypto − liabilities).
-function WealthLevelCard({ liquidNetWorth }) {
-  const lvl = wealthLevel(liquidNetWorth)
+// Olive monoline illustration showing the user's current wealth level.
+// Driven by the same projected net worth shown in the slider — so it
+// updates live as the user edits hexes or moves the projection horizon.
+function WealthLevelCard({ netWorth }) {
+  const lvl = wealthLevel(netWorth)
   const meta = WEALTH_LEVELS[lvl]
 
   return (
@@ -945,7 +987,7 @@ function WealthLevelCard({ liquidNetWorth }) {
         <div>
           <h3 className="font-display font-bold text-lg">Wealth level</h3>
           <p className="text-xs text-ink-500 mt-0.5">
-            Where you sit based on liquid net worth.
+            Where you sit based on projected net worth.
           </p>
         </div>
         <span className="chip border border-olive-200 bg-olive-50 text-olive-700">
@@ -961,8 +1003,8 @@ function WealthLevelCard({ liquidNetWorth }) {
       </div>
 
       <div className="mt-1 flex items-baseline justify-between gap-3">
-        <span className="font-display text-3xl font-extrabold text-olive-700">
-          {fmtMoney(liquidNetWorth)}
+        <span className={`font-display text-3xl font-extrabold ${netWorth < 0 ? 'text-red-600' : 'text-olive-700'}`}>
+          {fmtMoney(netWorth)}
         </span>
         <span className="text-xs text-ink-500 text-right">
           {meta.illustration}
