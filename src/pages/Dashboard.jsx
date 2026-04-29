@@ -6,6 +6,7 @@ import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal from '../components/PrioritizeGoalsModal.jsx'
+import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
 
 
@@ -148,9 +149,7 @@ export default function Dashboard() {
     setPriorities,
   } = usePlanner()
   const [params] = useSearchParams()
-  const rawView = params.get('view') || 'home'
-  // back-compat: old /dashboard?view=goals links land on the new snapshot tab
-  const view = rawView === 'goals' ? 'snapshot' : rawView
+  const view = params.get('view') || 'home'
 
   // Modal state for adding items on the snapshot view
   const [addingType, setAddingType] = useState(null) // 'asset' | 'liability' | 'goal' | null
@@ -231,6 +230,25 @@ export default function Dashboard() {
 
   if (view === 'snapshot') {
     return <SnapshotView
+      profile={profile}
+      addingType={addingType}
+      setAddingType={setAddingType}
+      editing={editing}
+      setEditing={setEditing}
+      addAsset={addAsset}
+      removeAsset={removeAsset}
+      updateAsset={updateAsset}
+      addLiability={addLiability}
+      removeLiability={removeLiability}
+      updateLiability={updateLiability}
+      addGoal={addGoal}
+      removeGoal={removeGoal}
+      updateGoal={updateGoal}
+    />
+  }
+
+  if (view === 'goals') {
+    return <GoalsView
       profile={profile}
       addingType={addingType}
       setAddingType={setAddingType}
@@ -331,7 +349,7 @@ export default function Dashboard() {
       <section>
         <div className="flex items-end justify-between mb-3">
           <h2 className="font-display text-lg font-bold">Your top 3 focus</h2>
-          <Link to="/dashboard?view=goals" className="text-sm font-semibold text-grape-700">See all →</Link>
+          <Link to="/dashboard?view=goals" className="text-sm font-semibold text-grape-700">View goals →</Link>
         </div>
         {topGoals.length === 0 ? <EmptyGoals /> : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -397,7 +415,8 @@ function PrioritizeCTA({ goalCount, onClick }) {
 function Header({ view, greeting, name }) {
   const titles = {
     home:     { h: greeting ? `${greeting}, ${name || 'friend'}` : 'Dashboard', s: "Here's the shape of your plan today." },
-    snapshot: { h: 'Snapshot',       s: 'Your assets, liabilities, and goals — one hex at a time.' },
+    snapshot: { h: 'Snapshot',       s: 'Your assets and liabilities — one hex at a time.' },
+    goals:    { h: 'Goals',          s: 'What you\'re working toward, hex by hex.' },
     money:    { h: 'Your money',     s: 'A live view of the numbers you shared.' },
     profile:  { h: 'Your profile',   s: 'The context we use to personalize things.' },
   }
@@ -653,7 +672,6 @@ const SNAPSHOT_FILTERS = [
   { id: 'all',         label: 'All',         tone: 'ink' },
   { id: 'assets',      label: 'Assets',      tone: 'brand' },
   { id: 'liabilities', label: 'Liabilities', tone: 'red' },
-  { id: 'goals',       label: 'Goals',       tone: 'slate' },
 ]
 
 const GOAL_CAT_EMOJI = {
@@ -679,7 +697,6 @@ function SnapshotView({
 
   const assets = profile.assets || []
   const liabilities = profile.liabilities || []
-  const goals = profile.goals || []
   const rates = profile.rates
 
   // Projected values per hex — recompute only when inputs change
@@ -718,7 +735,6 @@ function SnapshotView({
 
   const showAssets      = filter === 'all' || filter === 'assets'
   const showLiabilities = filter === 'all' || filter === 'liabilities'
-  const showGoals       = filter === 'all' || filter === 'goals'
 
   // Add: new signature is (type, payload)
   const handleAddSubmit = (type, payload) => {
@@ -757,7 +773,7 @@ function SnapshotView({
     setEditing(null)
   }
 
-  const isEmpty = assets.length + liabilities.length + goals.length === 0
+  const isEmpty = assets.length + liabilities.length === 0
 
   return (
     <div className="space-y-6">
@@ -812,10 +828,6 @@ function SnapshotView({
             onClick={() => setAddingType('liability')}
             className="btn-secondary !py-2 !px-4 text-sm border-red-200 text-red-700 hover:bg-red-50"
           >+ Liability</button>
-          <button
-            onClick={() => setAddingType('goal')}
-            className="btn-secondary !py-2 !px-4 text-sm"
-          >+ Goal</button>
         </div>
       </div>
 
@@ -846,24 +858,11 @@ function SnapshotView({
             onRemove={() => removeLiability(l.id)}
           />
         ))}
-
-        {showGoals && goals.map((g) => (
-          <Hex
-            key={g.id}
-            tone="goal"
-            as="button"
-            icon={GOAL_CAT_EMOJI[g.category] || '🎯'}
-            title={g.title}
-            subtitle={HORIZON_LABEL[g.horizon] || ''}
-            onClick={() => setEditing({ type: 'goal', item: g })}
-            onRemove={() => removeGoal(g.id)}
-          />
-        ))}
       </div>
 
       {isEmpty && (
         <p className="text-center text-sm text-ink-500">
-          Start by adding a hex for an asset you own, a debt you owe, or a goal you're chasing.
+          Start by adding a hex for an asset you own or a debt you owe.
         </p>
       )}
 
@@ -1011,6 +1010,156 @@ function WealthLevelCard({ netWorth }) {
           <span className="block text-[11px] text-ink-400">{meta.range}</span>
         </span>
       </div>
+    </div>
+  )
+}
+
+// ----- Goals (hex grid) ------------------------------------------------
+
+function GoalsView({
+  profile,
+  addingType, setAddingType,
+  editing, setEditing,
+  addAsset, removeAsset, updateAsset,
+  addLiability, removeLiability, updateLiability,
+  addGoal, removeGoal, updateGoal,
+}) {
+  const goals = profile.goals || []
+
+  // Sort: prioritized goals first (in their stored order), the rest after.
+  const orderedGoals = useMemo(() => {
+    const priorityIds = profile.priorities || []
+    const byId = new Map(goals.map((g) => [g.id, g]))
+    const top = priorityIds.map((id) => byId.get(id)).filter(Boolean)
+    const rest = goals.filter((g) => !priorityIds.includes(g.id))
+    return [...top, ...rest]
+  }, [goals, profile.priorities])
+
+  // Add: same signature as Snapshot — handed in by the parent.
+  const handleAddSubmit = (type, payload) => {
+    if (type === 'asset') addAsset(payload)
+    else if (type === 'liability') addLiability(payload)
+    else if (type === 'goal') addGoal(payload)
+    setAddingType(null)
+  }
+
+  // Edit: support reclassification across all three types so a hex
+  // started here as a goal can become an asset or liability if the user
+  // changes their mind.
+  const handleEditSubmit = (newType, payload) => {
+    if (!editing) return
+    const { type: oldType, item } = editing
+    if (newType === oldType) {
+      if (newType === 'asset')          updateAsset(item.id, payload)
+      else if (newType === 'liability') updateLiability(item.id, payload)
+      else if (newType === 'goal')      updateGoal(item.id, payload)
+    } else {
+      if (oldType === 'asset')          removeAsset(item.id)
+      else if (oldType === 'liability') removeLiability(item.id)
+      else if (oldType === 'goal')      removeGoal(item.id)
+      if (newType === 'asset')          addAsset(payload)
+      else if (newType === 'liability') addLiability(payload)
+      else if (newType === 'goal')      addGoal(payload)
+    }
+    setEditing(null)
+  }
+
+  const handleEditDelete = () => {
+    if (!editing) return
+    const { type, item } = editing
+    if (type === 'asset')          removeAsset(item.id)
+    else if (type === 'liability') removeLiability(item.id)
+    else if (type === 'goal')      removeGoal(item.id)
+    setEditing(null)
+  }
+
+  // Quick by-horizon counts for the strip up top
+  const counts = {
+    short: goals.filter((g) => g.horizon === 'short').length,
+    mid:   goals.filter((g) => g.horizon === 'mid').length,
+    long:  goals.filter((g) => g.horizon === 'long').length,
+  }
+  const isEmpty = goals.length === 0
+
+  return (
+    <div className="space-y-6">
+      <Header view="goals" />
+
+      {/* KPI strip — total + by horizon */}
+      <div className="grid gap-4 sm:grid-cols-4">
+        <div className="card bg-card-gradient">
+          <p className="text-xs font-semibold uppercase tracking-wide text-grape-700">Total goals</p>
+          <p className="mt-1 font-display text-2xl font-extrabold">{goals.length}</p>
+          <p className="mt-1 text-xs text-ink-500">{(profile.priorities || []).length} prioritized</p>
+        </div>
+        <div className="card">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">0–1 yr</p>
+          <p className="mt-1 font-display text-2xl font-extrabold">{counts.short}</p>
+          <p className="mt-1 text-xs text-ink-500">Short horizon</p>
+        </div>
+        <div className="card">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">1–3 yrs</p>
+          <p className="mt-1 font-display text-2xl font-extrabold">{counts.mid}</p>
+          <p className="mt-1 text-xs text-ink-500">Mid horizon</p>
+        </div>
+        <div className="card">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">3+ yrs</p>
+          <p className="mt-1 font-display text-2xl font-extrabold">{counts.long}</p>
+          <p className="mt-1 text-xs text-ink-500">Long horizon</p>
+        </div>
+      </div>
+
+      {/* Add button row */}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={() => setAddingType('goal')}
+          className="btn-secondary !py-2 !px-4 text-sm"
+        >+ Goal</button>
+      </div>
+
+      {/* Hex grid */}
+      <div className="honeycomb">
+        {orderedGoals.map((g) => (
+          <Hex
+            key={g.id}
+            tone="goal"
+            as="button"
+            icon={GOAL_CAT_EMOJI[g.category] || '🎯'}
+            title={g.title}
+            subtitle={HORIZON_LABEL[g.horizon] || ''}
+            onClick={() => setEditing({ type: 'goal', item: g })}
+            onRemove={() => removeGoal(g.id)}
+          />
+        ))}
+      </div>
+
+      {isEmpty && (
+        <p className="text-center text-sm text-ink-500">
+          No goals yet. Click <strong>+ Goal</strong> to add one — or revisit the wizard for a guided pass.
+        </p>
+      )}
+
+      {!isEmpty && <ActionPlanner profile={profile} />}
+
+      {addingType && (
+        <AddItemModal
+          type={addingType}
+          mode="add"
+          onClose={() => setAddingType(null)}
+          onSubmit={handleAddSubmit}
+        />
+      )}
+
+      {editing && (
+        <AddItemModal
+          type={editing.type}
+          mode="edit"
+          initialValue={editing.item}
+          onClose={() => setEditing(null)}
+          onSubmit={handleEditSubmit}
+          onDelete={handleEditDelete}
+        />
+      )}
     </div>
   )
 }

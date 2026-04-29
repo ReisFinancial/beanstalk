@@ -14,6 +14,7 @@ function Logo({ className = '' }) {
 const navItems = [
   { key: 'home',     to: '/dashboard',                label: 'Dashboard', icon: '🏡' },
   { key: 'snapshot', to: '/dashboard?view=snapshot',  label: 'Snapshot',  icon: '🔷' },
+  { key: 'goals',    to: '/dashboard?view=goals',     label: 'Goals',     icon: '🎯' },
   { key: 'money',    to: '/dashboard?view=money',     label: 'Money',     icon: '💸' },
   { key: 'profile',  to: '/dashboard?view=profile',   label: 'Profile',   icon: '🙂' },
 ]
@@ -78,7 +79,7 @@ export default function Layout() {
         className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200
                    pb-[env(safe-area-inset-bottom)]"
       >
-        <ul className="grid grid-cols-4">
+        <ul className="grid grid-cols-5">
           {navItems.map((item) => {
             const active = isActive(item.key)
             return (
