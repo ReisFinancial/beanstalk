@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
+// Goal categories now describe what kind of action the goal entails.
+// The selection drives which extra inputs show below it (target $ or
+// the liability the goal pays down).
 const GOAL_CATEGORIES = [
-  { id: 'money',         label: 'Money',         emoji: '💰' },
-  { id: 'career',        label: 'Career',        emoji: '🧑‍💻' },
-  { id: 'health',        label: 'Health',        emoji: '💪' },
-  { id: 'learning',      label: 'Learning',      emoji: '📚' },
-  { id: 'relationships', label: 'Relationships', emoji: '❤️' },
-  { id: 'lifestyle',     label: 'Lifestyle',     emoji: '🌿' },
+  { id: 'debt',       label: 'Paying down a debt',         emoji: '🔻' },
+  { id: 'investment', label: 'Hitting an investment target', emoji: '📈' },
+  { id: 'spending',   label: 'Increase spending allocation',   emoji: '💸' },
+  { id: 'other',      label: 'Other',                       emoji: '🎯' },
 ]
 const HORIZONS = [
   { id: 'short', label: '0–1 yr' },
@@ -65,7 +66,8 @@ const META = {
  * Props:
  *   type          : initial classification ('asset' | 'liability' | 'goal')
  *   mode          : 'add' (default) | 'edit'
- *   initialValue  : existing item for edit mode — { label|title, amount?, category?, horizon? }
+ *   initialValue  : existing item for edit mode — { label|title, amount?, category?, horizon?, targetAmount?, liabilityId? }
+ *   liabilities   : full list of liabilities (used by the goal "debt" picker)
  *   onClose       : () => void
  *   onSubmit      : (type, payload) => void — callback receives the (possibly reclassified) type
  *   onDelete      : optional () => void — shown only in edit mode
@@ -74,6 +76,7 @@ export default function AddItemModal({
   type: initialType,
   mode = 'add',
   initialValue,
+  liabilities = [],
   onClose,
   onSubmit,
   onDelete,
@@ -101,9 +104,33 @@ export default function AddItemModal({
       || DEFAULT_SUBTYPE[initialType]
       || 'savings',
   )
-  // Goal-only
-  const [category, setCategory] = useState(initialValue?.category || 'money')
-  const [horizon, setHorizon]   = useState(initialValue?.horizon  || 'mid')
+  // Goal-only. `category` now drives extra fields:
+  //   investment → ask for a target $ amount
+  //   debt       → ask which liability this goal pays down
+  const LEGACY_CATEGORY_MAP = {
+    money: 'investment', career: 'other', health: 'other',
+    learning: 'other',   relationships: 'other', lifestyle: 'other',
+  }
+  const initialCategory = (() => {
+    const c = initialValue?.category
+    if (!c) return 'other'
+    if (GOAL_CATEGORIES.some((x) => x.id === c)) return c
+    return LEGACY_CATEGORY_MAP[c] || 'other'
+  })()
+  const [category, setCategory]           = useState(initialCategory)
+  const [horizon, setHorizon]             = useState(initialValue?.horizon || 'mid')
+  const [targetAmount, setTargetAmount]   = useState(
+    initialValue?.targetAmount !== undefined && initialValue.targetAmount !== null
+      ? String(initialValue.targetAmount)
+      : '',
+  )
+  const [liabilityId, setLiabilityId]     = useState(initialValue?.liabilityId || '')
+  const [spendingBucket, setSpendingBucket] = useState(initialValue?.spendingBucket || 'discretionary')
+  const [spendingIncrease, setSpendingIncrease] = useState(
+    initialValue?.spendingIncrease !== undefined && initialValue.spendingIncrease !== null
+      ? String(initialValue.spendingIncrease)
+      : '',
+  )
 
   // When the user reclassifies in edit mode, make sure the subtype stays
   // valid for the new classification.
@@ -129,7 +156,20 @@ export default function AddItemModal({
     const trimmed = label.trim()
     if (!trimmed) return
     if (type === 'goal') {
-      onSubmit(type, { title: trimmed, category, horizon })
+      const payload = { title: trimmed, category, horizon }
+      if (category === 'investment' || category === 'other') {
+        const tgt = Number(targetAmount)
+        payload.targetAmount = Number.isFinite(tgt) && tgt >= 0 ? tgt : 0
+      }
+      if (category === 'debt') {
+        payload.liabilityId = liabilityId || null
+      }
+      if (category === 'spending') {
+        const inc = Number(spendingIncrease)
+        payload.spendingBucket   = spendingBucket
+        payload.spendingIncrease = Number.isFinite(inc) && inc >= 0 ? inc : 0
+      }
+      onSubmit(type, payload)
     } else {
       const amt = Number(amount)
       if (!Number.isFinite(amt) || amt < 0) return
@@ -286,24 +326,113 @@ export default function AddItemModal({
           {type === 'goal' && (
             <>
               <div>
-                <p className="label">Category</p>
-                <div className="flex flex-wrap gap-2">
+                <label className="label" htmlFor="goal-category">Category</label>
+                <select
+                  id="goal-category"
+                  className="input"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
                   {GOAL_CATEGORIES.map((c) => (
-                    <button
-                      type="button"
-                      key={c.id}
-                      onClick={() => setCategory(c.id)}
-                      className={`chip border ${
-                        category === c.id
-                          ? 'bg-grape-50 border-grape-400 text-grape-800'
-                          : 'bg-white border-slate-200 text-ink-700'
-                      }`}
-                    >
-                      <span>{c.emoji}</span> {c.label}
-                    </button>
+                    <option key={c.id} value={c.id}>
+                      {c.emoji}  {c.label}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
+
+              {(category === 'investment' || category === 'other') && (
+                <div>
+                  <label className="label" htmlFor="goal-target">
+                    {category === 'investment' ? 'Target amount' : 'Estimated cost'}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                    <input
+                      id="goal-target"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="1"
+                      className="input pl-8"
+                      placeholder="e.g. 25000"
+                      value={targetAmount}
+                      onChange={(e) => setTargetAmount(e.target.value)}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-400">
+                    {category === 'investment'
+                      ? "The dollar amount you're aiming to reach."
+                      : "The dollar amount this goal is expected to cost."}
+                  </p>
+                </div>
+              )}
+
+              {category === 'debt' && (
+                <div>
+                  <label className="label" htmlFor="goal-liability">Liability to pay down</label>
+                  <select
+                    id="goal-liability"
+                    className="input"
+                    value={liabilityId}
+                    onChange={(e) => setLiabilityId(e.target.value)}
+                  >
+                    <option value="">Select a liability…</option>
+                    {liabilities.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        🔻 {l.label} {l.amount ? `· $${Number(l.amount).toLocaleString()}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {liabilities.length === 0 && (
+                    <p className="mt-1 text-[11px] text-ink-400">
+                      No liabilities yet — add one on the Snapshot first.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {category === 'spending' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="label" htmlFor="goal-bucket">Which area to increase?</label>
+                    <select
+                      id="goal-bucket"
+                      className="input"
+                      value={spendingBucket}
+                      onChange={(e) => setSpendingBucket(e.target.value)}
+                    >
+                      <option value="wealthGen">🌱 Wealth generation</option>
+                      <option value="bareNec">🧱 Bare necessities</option>
+                      <option value="discretionary">🎈 Discretionary spending</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="goal-increase">Increase by</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                      <input
+                        id="goal-increase"
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="1"
+                        className="input pl-8 pr-12"
+                        placeholder="0"
+                        value={spendingIncrease}
+                        onChange={(e) => setSpendingIncrease(e.target.value)}
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">
+                        /mo
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-ink-400">
+                      How much extra you want to add to this bucket each month.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className="label">Time horizon</p>
                 <div className="flex flex-wrap gap-2">

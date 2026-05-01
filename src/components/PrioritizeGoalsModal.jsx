@@ -13,6 +13,8 @@ import { useMemo, useState } from 'react'
  */
 
 const CATEGORY_EMOJI = {
+  debt: '🔻', investment: '📈', spending: '💸', other: '🎯',
+  // Legacy theme categories — kept so older saved goals still render
   money: '💰', career: '🧑‍💻', health: '💪',
   learning: '📚', relationships: '❤️', lifestyle: '🌿',
 }

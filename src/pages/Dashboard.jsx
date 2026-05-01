@@ -675,6 +675,9 @@ const SNAPSHOT_FILTERS = [
 ]
 
 const GOAL_CAT_EMOJI = {
+  // New action-oriented categories
+  debt: '🔻', investment: '📈', spending: '💸', other: '🎯',
+  // Legacy theme categories — kept so older saved goals still render
   money: '💰', career: '🧑‍💻', health: '💪',
   learning: '📚', relationships: '❤️', lifestyle: '🌿',
 }
@@ -882,6 +885,7 @@ function SnapshotView({
         <AddItemModal
           type={addingType}
           mode="add"
+          liabilities={liabilities}
           onClose={() => setAddingType(null)}
           onSubmit={handleAddSubmit}
         />
@@ -892,6 +896,7 @@ function SnapshotView({
           type={editing.type}
           mode="edit"
           initialValue={editing.item}
+          liabilities={liabilities}
           onClose={() => setEditing(null)}
           onSubmit={handleEditSubmit}
           onDelete={handleEditDelete}
@@ -1024,7 +1029,8 @@ function GoalsView({
   addLiability, removeLiability, updateLiability,
   addGoal, removeGoal, updateGoal,
 }) {
-  const goals = profile.goals || []
+  const goals       = profile.goals       || []
+  const liabilities = profile.liabilities || []
 
   // Sort: prioritized goals first (in their stored order), the rest after.
   const orderedGoals = useMemo(() => {
@@ -1145,6 +1151,7 @@ function GoalsView({
         <AddItemModal
           type={addingType}
           mode="add"
+          liabilities={liabilities}
           onClose={() => setAddingType(null)}
           onSubmit={handleAddSubmit}
         />
@@ -1155,6 +1162,7 @@ function GoalsView({
           type={editing.type}
           mode="edit"
           initialValue={editing.item}
+          liabilities={liabilities}
           onClose={() => setEditing(null)}
           onSubmit={handleEditSubmit}
           onDelete={handleEditDelete}
