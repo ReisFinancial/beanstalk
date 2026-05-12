@@ -33,12 +33,16 @@ export default function Hex({
   onClick,
   onRemove,
   as: As = 'div',
+  animDelay,
 }) {
   const t = TONES[tone] || TONES.asset
   const isButton = As === 'button'
 
   return (
-    <div className="relative aspect-[1/1.155] group">
+    <div
+      className="relative aspect-[1/1.155] group hex-entrance"
+      style={animDelay != null ? { animationDelay: animDelay } : undefined}
+    >
       {/* Charcoal border layer — full size */}
       <div className="absolute inset-0 hex-clip bg-slate-900" aria-hidden />
 

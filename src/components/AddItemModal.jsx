@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 
+function fmtMoney(n) {
+  const x = Number(n) || 0
+  return x.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+}
+function fmtDate(iso) {
+  const d = new Date(iso + 'T00:00:00')
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 // Goal categories now describe what kind of action the goal entails.
 // The selection drives which extra inputs show below it (target $ or
 // the liability the goal pays down).
@@ -80,6 +89,7 @@ export default function AddItemModal({
   onClose,
   onSubmit,
   onDelete,
+  logContribution,
 }) {
   const firstInput = useRef(null)
   const [type, setType] = useState(initialType)
@@ -143,6 +153,21 @@ export default function AddItemModal({
     }
   }
 
+  // Contribution log state (edit mode, asset/liability only)
+  const [contribAmount, setContribAmount] = useState('')
+  const [contribNote,   setContribNote]   = useState('')
+  const [contribLogged, setContribLogged] = useState(false)
+
+  const handleLogContrib = () => {
+    const n = Number(contribAmount)
+    if (!n || n <= 0 || !logContribution || !initialValue?.id) return
+    logContribution(initialValue.type ?? type, initialValue.id, { amount: n, note: contribNote.trim() })
+    setContribAmount('')
+    setContribNote('')
+    setContribLogged(true)
+    setTimeout(() => setContribLogged(false), 2500)
+  }
+
   // Close on escape + focus first input
   useEffect(() => {
     firstInput.current?.focus()
@@ -193,7 +218,7 @@ export default function AddItemModal({
       aria-modal="true"
     >
       <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-soft
-                      p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6">
+                      p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6 flip-enter">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="font-display text-xl font-extrabold">{heading}</h2>
@@ -453,6 +478,76 @@ export default function AddItemModal({
                 </div>
               </div>
             </>
+          )}
+
+          {/* Contribution log — edit mode, asset or liability only */}
+          {mode === 'edit' && type !== 'goal' && logContribution && initialValue?.id && (
+            <div className="border-t border-slate-100 pt-4 space-y-3">
+              <div>
+                <p className="font-display font-semibold text-sm">
+                  {type === 'asset' ? 'Log a contribution' : 'Log a payment'}
+                </p>
+                <p className="text-xs text-ink-400 mt-0.5">
+                  {type === 'asset'
+                    ? 'Record money you added — updates your balance right away.'
+                    : 'Record what you paid down — reduces your balance right away.'}
+                </p>
+              </div>
+
+              {monthlyPayment && Number(monthlyPayment) > 0 && (
+                <p className="text-xs text-ink-500">
+                  Your plan: <span className="font-semibold">{fmtMoney(Number(monthlyPayment))}/mo</span>
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 text-sm">$</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    className="input pl-7 pr-3 py-2.5 text-sm"
+                    placeholder="Amount"
+                    value={contribAmount}
+                    onChange={(e) => setContribAmount(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogContrib}
+                  disabled={!contribAmount || Number(contribAmount) <= 0}
+                  className={`btn shrink-0 text-sm px-4 py-2.5 transition-all ${
+                    contribLogged
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-slate-100 text-ink-700 hover:bg-slate-200 disabled:opacity-40'
+                  }`}
+                >
+                  {contribLogged ? '✓ Logged' : 'Log it'}
+                </button>
+              </div>
+
+              <input
+                type="text"
+                className="input py-2.5 text-sm"
+                placeholder="Note (optional) — e.g. bonus, birthday gift"
+                value={contribNote}
+                onChange={(e) => setContribNote(e.target.value)}
+              />
+
+              {/* Recent contributions */}
+              {(initialValue?.contributions || []).length > 0 && (
+                <div className="space-y-1 pt-1">
+                  <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">Recent</p>
+                  {[...(initialValue.contributions || [])].reverse().slice(0, 4).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between text-xs text-ink-500">
+                      <span>{c.note || (type === 'asset' ? 'Contribution' : 'Payment')}</span>
+                      <span className="font-semibold">{fmtDate(c.date)} · {fmtMoney(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="flex items-center gap-3 pt-2">

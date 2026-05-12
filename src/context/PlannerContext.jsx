@@ -19,6 +19,10 @@ const emptyProfile = {
   assets: [], // { id, label, amount, note? }
   liabilities: [], // { id, label, amount, note? }
   snapshotSeeded: false, // true once we've seeded assets/liabilities from wizard finances
+  // Monthly check-in history — each entry is a point-in-time snapshot
+  // { date: 'YYYY-MM-DD', finances: {...}, netWorth: number, savingsRate: number }
+  checkIns: [],
+  lastCheckIn: null, // ISO date string of most recent check-in
   finances: {
     monthlyIncome: '',
     monthlyExpenses: '',
@@ -249,6 +253,64 @@ export function PlannerProvider({ children }) {
     })
   }, [])
 
+  // Log an actual contribution or payment against a specific asset/liability.
+  // Updates the item's balance and appends to its contributions[] history.
+  const logContribution = useCallback((type, id, { amount, note = '' }) => {
+    const n = Number(amount)
+    if (!n || n <= 0) return
+    const entry = {
+      id:     crypto.randomUUID(),
+      date:   new Date().toISOString().slice(0, 10),
+      amount: n,
+      note,
+    }
+    setProfile((prev) => {
+      if (!prev) return prev
+      if (type === 'asset') {
+        return {
+          ...prev,
+          assets: prev.assets.map((a) =>
+            a.id === id
+              ? { ...a, amount: (Number(a.amount) || 0) + n, contributions: [...(a.contributions || []), entry] }
+              : a
+          ),
+        }
+      }
+      // liability: payment reduces the balance, floor at 0
+      return {
+        ...prev,
+        liabilities: prev.liabilities.map((l) =>
+          l.id === id
+            ? { ...l, amount: Math.max(0, (Number(l.amount) || 0) - n), contributions: [...(l.contributions || []), entry] }
+            : l
+        ),
+      }
+    })
+  }, [])
+
+  // Save a monthly check-in. Updates finances in place and appends a snapshot.
+  const saveCheckIn = useCallback((newFinances) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      const inc   = Number(newFinances.monthlyIncome)  || 0
+      const exp   = Number(newFinances.monthlyExpenses) || 0
+      const cash  = Number(newFinances.liquidAssets)    || 0
+      const inv   = Number(newFinances.investments)     || 0
+      const re    = Number(newFinances.realEstate)      || 0
+      const debt  = Number(newFinances.debts)           || 0
+      const savingsRate = inc > 0 ? Math.round(((inc - exp) / inc) * 100) : 0
+      const netWorth    = cash + inv + re - debt
+      const today = new Date().toISOString().slice(0, 10)
+      const entry = { date: today, finances: { ...newFinances }, netWorth, savingsRate }
+      return {
+        ...prev,
+        finances: { ...prev.finances, ...newFinances },
+        checkIns: [...(prev.checkIns || []), entry],
+        lastCheckIn: today,
+      }
+    })
+  }, [])
+
   const resetProfile = useCallback(() => {
     setProfile({ ...emptyProfile })
   }, [])
@@ -272,6 +334,8 @@ export function PlannerProvider({ children }) {
       updateRate,
       seedFromFinances,
       completeWizard,
+      logContribution,
+      saveCheckIn,
       resetProfile,
     }),
     [
@@ -279,7 +343,7 @@ export function PlannerProvider({ children }) {
       addGoal, removeGoal, updateGoal,
       addAsset, removeAsset, updateAsset,
       addLiability, removeLiability, updateLiability,
-      updateRate, seedFromFinances, completeWizard, resetProfile,
+      updateRate, seedFromFinances, completeWizard, logContribution, saveCheckIn, resetProfile,
     ],
   )
 

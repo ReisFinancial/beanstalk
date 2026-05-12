@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useCountUp } from '../hooks/useCountUp.js'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
@@ -7,7 +8,17 @@ import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal from '../components/PrioritizeGoalsModal.jsx'
 import ActionPlanner from '../components/ActionPlanner.jsx'
+import CheckInModal from '../components/CheckInModal.jsx'
+import MonthlyPlanModal from '../components/MonthlyPlanModal.jsx'
 import { formatLocation } from './Wizard.jsx'
+
+function checkInDue(profile) {
+  if (!profile?.completedWizard) return false
+  if (!profile.lastCheckIn) return true
+  const last = new Date(profile.lastCheckIn)
+  const now  = new Date()
+  return last.getFullYear() !== now.getFullYear() || last.getMonth() !== now.getMonth()
+}
 
 
 // ----- Future-value helpers --------------------------------------------
@@ -87,37 +98,133 @@ function fmtMoney(n) {
   return x.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
-function StatCard({ label, value, tone = 'default', hint }) {
+// progress: 0–100, barColor: tailwind bg class, progressLabel: right-end label
+function StatCard({ label, value, tone = 'default', hint, progress, barColor, progressLabel, rawValue, formatter, animDelay }) {
   const toneClass = {
     default: 'bg-white',
     good:    'bg-brand-50 border-brand-100',
     warn:    'bg-amber-50 border-amber-100',
     bad:     'bg-red-50 border-red-100',
   }[tone]
+
+  const animated  = useCountUp(typeof rawValue === 'number' ? rawValue : null)
+  const display   = (typeof rawValue === 'number' && formatter) ? formatter(animated) : value
+  const clampedPct = progress != null ? Math.min(100, Math.max(0, progress)) : null
+
   return (
-    <div className={`card ${toneClass}`}>
+    <div
+      className={`card ${toneClass} animate-fade-slide-up`}
+      style={animDelay ? { animationDelay: animDelay } : undefined}
+    >
       <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">{label}</p>
-      <p className="mt-1 font-display text-2xl font-extrabold">{value}</p>
+      <p className="mt-1 font-display text-2xl font-extrabold">{display}</p>
       {hint && <p className="mt-1 text-xs text-ink-500">{hint}</p>}
+
+      {clampedPct != null && (
+        <div className="mt-3">
+          <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className={`h-full rounded-full bar-fill ${barColor || 'bg-brand-500'}`}
+              style={{ width: `${clampedPct}%` }}
+            />
+          </div>
+          {progressLabel && (
+            <p className="mt-1 text-[11px] text-ink-400 text-right">{progressLabel}</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function GoalCard({ goal, rank }) {
+function GoalCard({ goal, rank, animDelay }) {
   const c = CATEGORIES[goal.category] || CATEGORIES.lifestyle
   return (
-    <div className={`card bg-gradient-to-br ${c.color} relative overflow-hidden`}>
+    <div
+      className={`card bg-gradient-to-br ${c.color} relative overflow-hidden animate-fade-slide-up`}
+      style={animDelay ? { animationDelay: animDelay } : undefined}
+    >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           <span className="text-2xl">{c.emoji}</span>
-          <span className="chip bg-white text-ink-700">{c.label}</span>
+          <span className="chip bg-white/80 text-ink-700">{c.label}</span>
         </div>
         {rank && (
-          <span className="chip bg-hero-gradient text-white">#{rank}</span>
+          <span className="chip bg-hero-gradient text-white rank-pulse">#{rank}</span>
         )}
       </div>
       <h3 className="mt-3 font-display text-lg font-bold leading-snug">{goal.title}</h3>
-      <p className="mt-1 text-xs text-ink-500">Horizon · {HORIZONS[goal.horizon] || '—'}</p>
+      <div className="mt-1 flex items-center gap-2 flex-wrap">
+        <p className="text-xs text-ink-500">Horizon · {HORIZONS[goal.horizon] || '—'}</p>
+        {goal.targetAmount > 0 && (
+          <span className="chip bg-white/60 text-ink-700 text-[11px]">
+            Target {fmtMoney(goal.targetAmount)}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Thresholds matching WealthMark level bands (lower bound of each level)
+const WEALTH_THRESHOLDS = [0, 1000, 10000, 100000, 500000, 4000000]
+const WEALTH_NAMES      = ['Chair & desk', 'Shopping cart', 'Car', 'House', 'Estate', 'Empire']
+
+function WealthProgressCard({ netWorth, animDelay }) {
+  const level  = wealthLevel(netWorth)
+  const isMax  = level >= 5
+  const lo     = WEALTH_THRESHOLDS[level]       ?? 0
+  const hi     = WEALTH_THRESHOLDS[level + 1]   ?? null
+  const pct    = isMax ? 100 : Math.min(100, Math.max(0, ((netWorth - lo) / (hi - lo)) * 100))
+  const toNext = isMax ? 0 : Math.max(0, hi - netWorth)
+  const nextName = !isMax ? WEALTH_NAMES[level + 1] : null
+
+  const barColor = level >= 4 ? 'bg-gradient-to-r from-grape-500 to-peach-400'
+                 : level >= 2 ? 'bg-gradient-to-r from-brand-500 to-brand-400'
+                 : 'bg-gradient-to-r from-amber-400 to-brand-400'
+
+  return (
+    <div
+      className="card bg-gradient-to-br from-slate-50 to-white animate-fade-slide-up overflow-hidden relative"
+      style={animDelay ? { animationDelay: animDelay } : undefined}
+    >
+      {/* faint watermark illustration */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.07] pointer-events-none">
+        <WealthMark level={level} className="h-28 w-36 text-grape-900" />
+      </div>
+
+      <div className="relative flex items-start gap-4">
+        <div className="shrink-0">
+          <WealthMark level={level} className="h-14 w-18 text-grape-700" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`chip text-white ${level >= 4 ? 'bg-gradient-to-r from-grape-500 to-peach-400' : 'bg-hero-gradient'}`}>
+              Level {level}
+            </span>
+            <span className="font-display font-bold text-sm">{WEALTH_NAMES[level]}</span>
+          </div>
+
+          <div className="mt-3">
+            <div className="flex justify-between text-[11px] text-ink-400 mb-1">
+              <span>{fmtMoney(lo)}</span>
+              {!isMax && <span>{fmtMoney(hi)}</span>}
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full bar-fill ${barColor}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-ink-500">
+              {isMax
+                ? <span className="shimmer-text font-bold">You've reached the top level.</span>
+                : <>{fmtMoney(toNext)} to <span className="font-semibold text-ink-700">{nextName}</span></>
+              }
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -147,6 +254,8 @@ export default function Dashboard() {
     updateSection,
     seedFromFinances,
     setPriorities,
+    logContribution,
+    saveCheckIn,
   } = usePlanner()
   const [params] = useSearchParams()
   const view = params.get('view') || 'home'
@@ -157,6 +266,14 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(null)
   // Goal prioritization modal (home view)
   const [prioritizing, setPrioritizing] = useState(false)
+  // Monthly check-in modal — shown once per session when a new month has started
+  const [showCheckIn, setShowCheckIn] = useState(false)
+  // Monthly plan modal — accessible from the Money view
+  const [showMonthlyPlan, setShowMonthlyPlan] = useState(false)
+
+  useEffect(() => {
+    if (profile && checkInDue(profile)) setShowCheckIn(true)
+  }, [profile?.completedWizard, profile?.lastCheckIn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Seed assets/liabilities from wizard finances the first time we
   // visit the snapshot view, so it isn't empty.
@@ -244,6 +361,7 @@ export default function Dashboard() {
       addGoal={addGoal}
       removeGoal={removeGoal}
       updateGoal={updateGoal}
+      logContribution={logContribution}
     />
   }
 
@@ -271,22 +389,54 @@ export default function Dashboard() {
       <div className="space-y-6">
         <Header view="money" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Monthly income"   value={fmtMoney(inc)} />
-          <StatCard label="Monthly expenses" value={fmtMoney(exp)} />
-          <StatCard label="Savings rate"
+          <StatCard label="Monthly income"   value={fmtMoney(inc)} rawValue={inc} formatter={fmtMoney} animDelay="0ms" />
+          <StatCard label="Monthly expenses" value={fmtMoney(exp)} rawValue={exp} formatter={fmtMoney} animDelay="60ms" />
+          <StatCard
+            label="Savings rate"
             value={savingsRate === null ? '—' : `${savingsRate}%`}
+            rawValue={savingsRate ?? undefined}
+            formatter={(n) => `${n}%`}
             hint={savingsRate === null ? 'Add income & expenses' : savingsRate >= 20 ? 'Excellent' : savingsRate >= 10 ? 'Solid' : 'Room to grow'}
-            tone={rateTone} />
-          <StatCard label="Runway"
+            tone={rateTone}
+            progress={savingsRate !== null ? Math.min(100, (savingsRate / 20) * 100) : null}
+            barColor={rateTone === 'good' ? 'bg-brand-500' : rateTone === 'warn' ? 'bg-amber-400' : 'bg-red-400'}
+            progressLabel={savingsRate !== null ? `${savingsRate}% of 20% goal` : undefined}
+            animDelay="120ms"
+          />
+          <StatCard
+            label="Runway"
             value={runwayMonths === null ? '—' : `${runwayMonths} mo`}
+            rawValue={runwayMonths ?? undefined}
+            formatter={(n) => `${n} mo`}
             hint={runwayMonths === null ? 'Add savings & expenses' : runwayMonths >= 6 ? 'Well covered' : runwayMonths >= 3 ? 'Getting there' : 'Build the cushion'}
-            tone={runwayTone} />
+            tone={runwayTone}
+            progress={runwayMonths !== null ? Math.min(100, (runwayMonths / 6) * 100) : null}
+            barColor={runwayTone === 'good' ? 'bg-brand-500' : runwayTone === 'warn' ? 'bg-amber-400' : 'bg-red-400'}
+            progressLabel={runwayMonths !== null ? `${runwayMonths} of 6 mo target` : undefined}
+            animDelay="180ms"
+          />
         </div>
-        <ContributionsCard profile={profile} updateSection={updateSection} />
 
+        {/* Monthly plan CTA */}
+        <div className="card bg-gradient-to-br from-brand-50 to-white border-brand-100 animate-fade-slide-up" style={{ animationDelay: '220ms' }}>
+          <div className="flex items-start gap-4 flex-wrap">
+            <div className="h-12 w-12 shrink-0 rounded-2xl bg-brand-100 grid place-items-center text-2xl">🗓️</div>
+            <div className="flex-1 min-w-[14rem]">
+              <h3 className="font-display font-extrabold text-lg">Monthly plan</h3>
+              <p className="text-sm text-ink-500 mt-0.5">
+                Tell us how much goes to savings, RRSP, credit card, and every other account — we'll build your financial picture automatically.
+              </p>
+            </div>
+            <button type="button" onClick={() => setShowMonthlyPlan(true)} className="btn-primary">
+              Set up plan
+            </button>
+          </div>
+        </div>
+
+        <ContributionsCard profile={profile} updateSection={updateSection} />
         <RatesCard rates={profile.rates} updateRate={updateRate} />
 
-        <div className="card">
+        <div className="card animate-fade-slide-up" style={{ animationDelay: '300ms' }}>
           <h3 className="font-display font-bold">Risk tolerance</h3>
           <p className="text-sm text-ink-500 mt-1 capitalize">
             {profile.finances.riskTolerance
@@ -294,6 +444,16 @@ export default function Dashboard() {
               : 'Not set yet. Update it in your profile.'}
           </p>
         </div>
+
+        {showMonthlyPlan && (
+          <MonthlyPlanModal
+            profile={profile}
+            updateAsset={updateAsset}
+            updateLiability={updateLiability}
+            updateSection={updateSection}
+            onClose={() => setShowMonthlyPlan(false)}
+          />
+        )}
       </div>
     )
   }
@@ -328,17 +488,61 @@ export default function Dashboard() {
     )
   }
 
+  // Savings rate progress toward a healthy 20% target
+  const rateProgress = savingsRate !== null ? Math.min(100, (savingsRate / 20) * 100) : null
+  const rateBarColor = rateTone === 'good' ? 'bg-brand-500' : rateTone === 'warn' ? 'bg-amber-400' : 'bg-red-400'
+
+  // Runway progress toward 6-month target
+  const runwayProgress = runwayMonths !== null ? Math.min(100, (runwayMonths / 6) * 100) : null
+  const runwayBarColor = runwayTone === 'good' ? 'bg-brand-500' : runwayTone === 'warn' ? 'bg-amber-400' : 'bg-red-400'
+
   // Default home
   return (
     <div className="space-y-6">
       <Header view="home" greeting={greeting} name={profile.personal.fullName || user?.username} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Top goals"      value={topGoals.length} hint="From your wizard" />
-        <StatCard label="Savings rate"   value={savingsRate === null ? '—' : `${savingsRate}%`} tone={rateTone} />
-        <StatCard label="Runway"         value={runwayMonths === null ? '—' : `${runwayMonths} mo`} tone={runwayTone} />
-        <StatCard label="Net position"   value={fmtMoney(netWorth)} />
+        <StatCard
+          label="Top goals"
+          value={topGoals.length}
+          rawValue={topGoals.length}
+          formatter={(n) => n}
+          hint="From your wizard"
+          animDelay="0ms"
+        />
+        <StatCard
+          label="Savings rate"
+          value={savingsRate === null ? '—' : `${savingsRate}%`}
+          rawValue={savingsRate ?? undefined}
+          formatter={(n) => `${n}%`}
+          tone={rateTone}
+          progress={rateProgress}
+          barColor={rateBarColor}
+          progressLabel={savingsRate !== null ? `${savingsRate}% of 20% goal` : undefined}
+          animDelay="60ms"
+        />
+        <StatCard
+          label="Runway"
+          value={runwayMonths === null ? '—' : `${runwayMonths} mo`}
+          rawValue={runwayMonths ?? undefined}
+          formatter={(n) => `${n} mo`}
+          tone={runwayTone}
+          progress={runwayProgress}
+          barColor={runwayBarColor}
+          progressLabel={runwayMonths !== null ? `${runwayMonths} of 6 mo target` : undefined}
+          animDelay="120ms"
+        />
+        <StatCard
+          label="Net position"
+          value={fmtMoney(netWorth)}
+          rawValue={netWorth}
+          formatter={(n) => fmtMoney(n)}
+          animDelay="180ms"
+        />
       </div>
+
+      {/* WealthMark level progression */}
+      <WealthProgressCard netWorth={netWorth} animDelay="220ms" />
 
       {/* Decision-making CTA — opens the prioritization modal */}
       <PrioritizeCTA
@@ -353,12 +557,14 @@ export default function Dashboard() {
         </div>
         {topGoals.length === 0 ? <EmptyGoals /> : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {topGoals.slice(0, 3).map((g, i) => <GoalCard key={g.id} goal={g} rank={i + 1} />)}
+            {topGoals.slice(0, 3).map((g, i) => (
+              <GoalCard key={g.id} goal={g} rank={i + 1} animDelay={`${i * 60}ms`} />
+            ))}
           </div>
         )}
       </section>
 
-      <section className="card">
+      <section className="card animate-fade-slide-up" style={{ animationDelay: '300ms' }}>
         <h2 className="font-display text-lg font-bold">Suggested next steps</h2>
         <p className="text-sm text-ink-500 mt-0.5">Tuned to what you shared in the wizard.</p>
         <div className="mt-5 space-y-4">
@@ -376,6 +582,15 @@ export default function Dashboard() {
             setPriorities(orderedIds)
             setPrioritizing(false)
           }}
+        />
+      )}
+
+      {showCheckIn && (
+        <CheckInModal
+          profile={profile}
+          onSave={(data) => saveCheckIn(data)}
+          onDismiss={() => setShowCheckIn(false)}
+          logContribution={logContribution}
         />
       )}
     </div>
@@ -690,6 +905,7 @@ function SnapshotView({
   addAsset, removeAsset, updateAsset,
   addLiability, removeLiability, updateLiability,
   addGoal, removeGoal, updateGoal,
+  logContribution,
 }) {
   const [filter, setFilter] = useState('all')
 
@@ -784,17 +1000,17 @@ function SnapshotView({
 
       {/* KPI strip */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="card bg-gradient-to-br from-brand-50 to-white border-brand-100">
+        <div className="card bg-gradient-to-br from-brand-50 to-white border-brand-100 animate-fade-slide-up" style={{ animationDelay: '0ms' }}>
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Assets</p>
           <p className="mt-1 font-display text-2xl font-extrabold">{fmtMoney(totalAssets)}</p>
           <p className="mt-1 text-xs text-ink-500">{assets.length} item{assets.length === 1 ? '' : 's'}</p>
         </div>
-        <div className="card bg-gradient-to-br from-red-50 to-white border-red-100">
+        <div className="card bg-gradient-to-br from-red-50 to-white border-red-100 animate-fade-slide-up" style={{ animationDelay: '60ms' }}>
           <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Liabilities</p>
           <p className="mt-1 font-display text-2xl font-extrabold">{fmtMoney(totalLiabilities)}</p>
           <p className="mt-1 text-xs text-ink-500">{liabilities.length} item{liabilities.length === 1 ? '' : 's'}</p>
         </div>
-        <div className="card bg-card-gradient">
+        <div className="card bg-card-gradient animate-fade-slide-up" style={{ animationDelay: '120ms' }}>
           <p className="text-xs font-semibold uppercase tracking-wide text-grape-700">Net worth</p>
           <p className={`mt-1 font-display text-2xl font-extrabold ${netWorth < 0 ? 'text-red-600' : ''}`}>
             {fmtMoney(netWorth)}
@@ -836,7 +1052,7 @@ function SnapshotView({
 
       {/* Hex grid — tightly packed honeycomb (see .honeycomb in index.css) */}
       <div className="honeycomb">
-        {showAssets && projectedAssets.map((a) => (
+        {showAssets && projectedAssets.map((a, i) => (
           <Hex
             key={a.id}
             tone="asset"
@@ -846,10 +1062,11 @@ function SnapshotView({
             subtitle={fmtMoney(a.projected)}
             onClick={() => setEditing({ type: 'asset', item: a })}
             onRemove={() => removeAsset(a.id)}
+            animDelay={`${i * 50}ms`}
           />
         ))}
 
-        {showLiabilities && projectedLiabilities.map((l) => (
+        {showLiabilities && projectedLiabilities.map((l, i) => (
           <Hex
             key={l.id}
             tone="liability"
@@ -859,6 +1076,7 @@ function SnapshotView({
             subtitle={fmtMoney(l.projected)}
             onClick={() => setEditing({ type: 'liability', item: l })}
             onRemove={() => removeLiability(l.id)}
+            animDelay={`${(projectedAssets.length + i) * 50}ms`}
           />
         ))}
       </div>
@@ -900,6 +1118,7 @@ function SnapshotView({
           onClose={() => setEditing(null)}
           onSubmit={handleEditSubmit}
           onDelete={handleEditDelete}
+          logContribution={logContribution}
         />
       )}
     </div>
