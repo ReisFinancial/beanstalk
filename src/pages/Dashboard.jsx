@@ -229,6 +229,115 @@ function WealthProgressCard({ netWorth, animDelay }) {
   )
 }
 
+function NetWorthSparkline({ checkIns, animDelay }) {
+  const data = (checkIns || []).slice(-12)
+
+  if (data.length === 0) {
+    return (
+      <div
+        className="card border-dashed border-2 border-slate-200 bg-slate-50 text-center py-8 animate-fade-slide-up"
+        style={animDelay ? { animationDelay: animDelay } : undefined}
+      >
+        <p className="text-2xl mb-2">📊</p>
+        <p className="font-display font-bold">Your net worth chart starts here</p>
+        <p className="text-sm text-ink-500 mt-1">Complete your first monthly check-in and it'll appear.</p>
+      </div>
+    )
+  }
+
+  const values  = data.map((c) => c.netWorth)
+  const minVal  = Math.min(0, ...values)
+  const maxVal  = Math.max(...values, 1)
+  const range   = maxVal - minVal || 1
+  const first   = values[0]
+  const last    = values[values.length - 1]
+  const delta   = last - first
+  const trending = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
+
+  const trendColor = trending === 'up' ? 'text-brand-600' : trending === 'down' ? 'text-red-600' : 'text-ink-500'
+  const trendLabel = trending === 'up'
+    ? `+${fmtMoney(delta)} since you started`
+    : trending === 'down'
+    ? `${fmtMoney(delta)} since you started`
+    : 'Holding steady'
+
+  return (
+    <div
+      className="card animate-fade-slide-up overflow-hidden"
+      style={animDelay ? { animationDelay: animDelay } : undefined}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <h3 className="font-display font-bold text-lg">Net worth over time</h3>
+          <p className={`text-sm mt-0.5 font-medium ${trendColor}`}>{trendLabel}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-ink-400">Now</p>
+          <p className="font-display font-extrabold text-xl">{fmtMoney(last)}</p>
+        </div>
+      </div>
+
+      {/* Bar chart — bars rise from the bottom */}
+      <div className="flex items-end gap-1 h-24" aria-hidden>
+        {data.map((entry, i) => {
+          const isLast   = i === data.length - 1
+          const heightPct = Math.max(3, ((Math.max(0, entry.netWorth) - Math.min(0, minVal)) / range) * 100)
+          const positive  = entry.netWorth >= 0
+          const barClass  = positive
+            ? isLast ? 'bg-brand-500' : 'bg-brand-200'
+            : isLast ? 'bg-red-500'   : 'bg-red-200'
+
+          return (
+            <div key={entry.date} className="flex-1 flex flex-col justify-end h-full group relative">
+              {/* Value tooltip on the last bar */}
+              {isLast && (
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 -translate-y-full
+                                bg-ink-900 text-white text-[10px] font-semibold px-2 py-1 rounded-lg
+                                whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                  {fmtMoney(entry.netWorth)}
+                </div>
+              )}
+              <div
+                className={`w-full rounded-t-sm ${barClass} bar-rise`}
+                style={{ height: `${heightPct}%`, animationDelay: `${i * 60}ms` }}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Month labels */}
+      <div className="flex gap-1 mt-2">
+        {data.map((entry, i) => {
+          const isFirst = i === 0
+          const isLast  = i === data.length - 1
+          const label   = new Date(entry.date + 'T00:00:00')
+            .toLocaleDateString(undefined, { month: 'short' })
+          return (
+            <div key={entry.date} className="flex-1 text-center">
+              {(isFirst || isLast || data.length <= 6) && (
+                <span className={`text-[10px] ${isLast ? 'text-brand-600 font-semibold' : 'text-ink-400'}`}>
+                  {label}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Baseline delta summary */}
+      {data.length >= 2 && (
+        <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-xs text-ink-400">
+          <span>Started {new Date(data[0].date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', year: 'numeric' })} · {fmtMoney(first)}</span>
+          <span className={`font-semibold ${trendColor}`}>
+            {trending === 'up' ? '↑' : trending === 'down' ? '↓' : '→'} {data.length} month{data.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function NextStep({ icon, title, children }) {
   return (
     <div className="flex gap-3 items-start">
@@ -543,6 +652,9 @@ export default function Dashboard() {
 
       {/* WealthMark level progression */}
       <WealthProgressCard netWorth={netWorth} animDelay="220ms" />
+
+      {/* Net worth sparkline — grows with each monthly check-in */}
+      <NetWorthSparkline checkIns={profile.checkIns} animDelay="270ms" />
 
       {/* Decision-making CTA — opens the prioritization modal */}
       <PrioritizeCTA
