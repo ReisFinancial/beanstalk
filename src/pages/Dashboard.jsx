@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
-import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
+import WealthMark, { wealthLevel, WEALTH_LEVELS, WEALTH_NAMES } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal from '../components/PrioritizeGoalsModal.jsx'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import CheckInModal from '../components/CheckInModal.jsx'
@@ -168,63 +168,112 @@ function GoalCard({ goal, rank, animDelay }) {
 
 // Thresholds matching WealthMark level bands (lower bound of each level)
 const WEALTH_THRESHOLDS = [0, 1000, 10000, 100000, 500000, 4000000]
-const WEALTH_NAMES      = ['Chair & desk', 'Shopping cart', 'Car', 'House', 'Estate', 'Empire']
 
-function WealthProgressCard({ netWorth, animDelay }) {
-  const level  = wealthLevel(netWorth)
-  const isMax  = level >= 5
-  const lo     = WEALTH_THRESHOLDS[level]       ?? 0
-  const hi     = WEALTH_THRESHOLDS[level + 1]   ?? null
-  const pct    = isMax ? 100 : Math.min(100, Math.max(0, ((netWorth - lo) / (hi - lo)) * 100))
-  const toNext = isMax ? 0 : Math.max(0, hi - netWorth)
+const LEVEL_MARK_COLORS = [
+  'text-amber-600',  // Seed
+  'text-brand-600',  // Sprout
+  'text-brand-700',  // Sapling
+  'text-olive-700',  // Grove
+  'text-grape-700',  // Canopy
+  'text-grape-800',  // Ancient Oak
+]
+const LEVEL_BAR_COLORS = [
+  'bg-gradient-to-r from-amber-400 to-amber-500',
+  'bg-gradient-to-r from-brand-400 to-brand-500',
+  'bg-gradient-to-r from-brand-500 to-olive-500',
+  'bg-gradient-to-r from-olive-500 to-brand-600',
+  'bg-gradient-to-r from-grape-500 to-brand-500',
+  'bg-gradient-to-r from-grape-600 to-peach-400',
+]
+const XP_PER_MILESTONE = 500
+
+function WealthProgressCard({ netWorth, xp = 0, animDelay }) {
+  const level    = wealthLevel(netWorth)
+  const isMax    = level >= 5
+  const lo       = WEALTH_THRESHOLDS[level]     ?? 0
+  const hi       = WEALTH_THRESHOLDS[level + 1] ?? null
+  const pct      = isMax ? 100 : Math.min(100, Math.max(0, ((netWorth - lo) / (hi - lo)) * 100))
+  const toNext   = isMax ? 0 : Math.max(0, hi - netWorth)
   const nextName = !isMax ? WEALTH_NAMES[level + 1] : null
 
-  const barColor = level >= 4 ? 'bg-gradient-to-r from-grape-500 to-peach-400'
-                 : level >= 2 ? 'bg-gradient-to-r from-brand-500 to-brand-400'
-                 : 'bg-gradient-to-r from-amber-400 to-brand-400'
+  const xpProgress  = xp % XP_PER_MILESTONE
+  const xpMilestone = Math.floor(xp / XP_PER_MILESTONE)
+  const xpPct       = (xpProgress / XP_PER_MILESTONE) * 100
+
+  const markColor = LEVEL_MARK_COLORS[level]
+  const barColor  = LEVEL_BAR_COLORS[level]
+  const chipClass = level >= 4
+    ? 'bg-gradient-to-r from-grape-500 to-peach-400 text-white'
+    : level >= 2
+    ? 'bg-brand-100 text-brand-800'
+    : 'bg-amber-100 text-amber-800'
 
   return (
     <div
-      className="card bg-gradient-to-br from-slate-50 to-white animate-fade-slide-up overflow-hidden relative"
+      className="card animate-fade-slide-up overflow-hidden relative"
       style={animDelay ? { animationDelay: animDelay } : undefined}
     >
-      {/* faint watermark illustration */}
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.07] pointer-events-none">
-        <WealthMark level={level} className="h-28 w-36 text-grape-900" />
+      {/* Faint watermark */}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none">
+        <WealthMark level={level} className="h-36 w-44 text-ink-900" />
       </div>
 
-      <div className="relative flex items-start gap-4">
+      <div className="relative flex items-center gap-5">
+        {/* Illustration */}
         <div className="shrink-0">
-          <WealthMark level={level} className="h-14 w-18 text-grape-700" />
+          <WealthMark level={level} className={`h-20 w-24 ${markColor} transition-all duration-500`} />
         </div>
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`chip text-white ${level >= 4 ? 'bg-gradient-to-r from-grape-500 to-peach-400' : 'bg-hero-gradient'}`}>
-              Level {level}
-            </span>
-            <span className="font-display font-bold text-sm">{WEALTH_NAMES[level]}</span>
+            <span className={`chip text-xs font-bold ${chipClass}`}>Level {level}</span>
+            <span className="font-display font-extrabold text-base">{WEALTH_NAMES[level]}</span>
           </div>
 
+          {/* Net worth progress bar */}
           <div className="mt-3">
-            <div className="flex justify-between text-[11px] text-ink-400 mb-1">
+            <div className="flex justify-between text-[11px] text-ink-400 mb-1.5">
               <span>{fmtMoney(lo)}</span>
               {!isMax && <span>{fmtMoney(hi)}</span>}
             </div>
             <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className={`h-full rounded-full bar-fill ${barColor}`}
-                style={{ width: `${pct}%` }}
-              />
+              <div className={`h-full rounded-full bar-fill ${barColor}`} style={{ width: `${pct}%` }} />
             </div>
             <p className="mt-1.5 text-xs text-ink-500">
               {isMax
                 ? <span className="shimmer-text font-bold">You've reached the top level.</span>
-                : <>{fmtMoney(toNext)} to <span className="font-semibold text-ink-700">{nextName}</span></>
+                : <>{fmtMoney(toNext)} to <span className="font-semibold text-ink-800">{nextName}</span></>
               }
             </p>
           </div>
+
+          {/* XP bar */}
+          {xp > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="flex justify-between text-[10px] text-ink-400 mb-1">
+                <span className="flex items-center gap-1">⚡ <span className="font-semibold">{xp.toLocaleString()} XP</span></span>
+                <span>Milestone {xpMilestone} · {xpProgress}/{XP_PER_MILESTONE}</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full xp-bar-fill bg-gradient-to-r from-grape-400 to-brand-400"
+                  style={{ width: `${xpPct}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Next level preview */}
+      {!isMax && (
+        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
+          <WealthMark level={level + 1} className="h-8 w-10 text-slate-300 shrink-0" />
+          <p className="text-xs text-ink-400">
+            Next unlock: <span className="font-semibold text-ink-600">{nextName}</span> at {fmtMoney(hi)}
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -338,6 +387,90 @@ function NetWorthSparkline({ checkIns, animDelay }) {
   )
 }
 
+const LEVEL_UP_MESSAGES = [
+  'Your future self is grateful.',
+  "You're building real momentum.",
+  "That's what financial resilience looks like.",
+  "Keep growing — you're on the right path.",
+  'Every decision compounds over time.',
+  'Wealth is options. You just unlocked more.',
+]
+
+function LevelUpModal({ level, onClose }) {
+  const name    = WEALTH_NAMES[level] || `Level ${level}`
+  const message = LEVEL_UP_MESSAGES[level % LEVEL_UP_MESSAGES.length]
+  const markColors = LEVEL_MARK_COLORS[level] || 'text-brand-600'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="card max-w-xs w-full text-center animate-pop-in">
+        <div className="level-up-enter mx-auto">
+          <WealthMark level={level} className={`h-36 w-44 mx-auto ${markColors}`} />
+        </div>
+        <div className="mt-3">
+          <span className="shimmer-text font-display text-4xl font-extrabold">Level {level}</span>
+        </div>
+        <p className="font-display font-bold text-2xl mt-1 text-ink-900">{name}</p>
+        <p className="text-ink-500 mt-3 text-sm leading-relaxed">{message}</p>
+        <div className="mt-3 flex justify-center">
+          <span className="chip bg-grape-100 text-grape-700 font-bold">+100 XP earned</span>
+        </div>
+        <button onClick={onClose} className="btn-primary w-full mt-5">Claim your reward</button>
+      </div>
+    </div>
+  )
+}
+
+const MISSION_LABELS = ["Today's Mission", 'Your Next Move', 'Action Item', 'Focus Today']
+
+function TodaysMission({ suggestions, animDelay }) {
+  const label   = MISSION_LABELS[new Date().getDate() % MISSION_LABELS.length]
+  const primary = suggestions[0]
+  const rest    = suggestions.slice(1, 3)
+
+  if (!primary) return null
+
+  return (
+    <section
+      className="card bg-gradient-to-br from-grape-700 via-grape-600 to-brand-600 text-white overflow-hidden relative animate-fade-slide-up"
+      style={animDelay ? { animationDelay: animDelay } : undefined}
+    >
+      {/* Faint watermark */}
+      <div className="absolute -right-6 -top-6 opacity-[0.08] pointer-events-none">
+        <WealthMark level={5} className="h-48 w-60 text-white" />
+      </div>
+
+      <div className="relative">
+        <span className="chip bg-white/20 text-white/90 text-[10px] uppercase tracking-widest font-bold mb-4 inline-block">
+          {label}
+        </span>
+
+        <div className="flex items-start gap-4">
+          <div className="shrink-0 h-12 w-12 rounded-2xl bg-white/20 grid place-items-center text-2xl">
+            {primary.icon}
+          </div>
+          <div className="flex-1">
+            <h3 className="font-display font-bold text-xl leading-snug">{primary.title}</h3>
+            <p className="mt-1 text-white/75 text-sm">{primary.text}</p>
+          </div>
+        </div>
+
+        {rest.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-white/20 space-y-2.5">
+            <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Also on your list</p>
+            {rest.map((s, i) => (
+              <div key={i} className="flex items-center gap-3 text-white/65">
+                <span className="text-sm">{s.icon}</span>
+                <span className="text-sm">{s.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function NextStep({ icon, title, children }) {
   return (
     <div className="flex gap-3 items-start">
@@ -365,6 +498,8 @@ export default function Dashboard() {
     setPriorities,
     logContribution,
     saveCheckIn,
+    awardXp,
+    markLevelSeen,
   } = usePlanner()
   const [params] = useSearchParams()
   const view = params.get('view') || 'home'
@@ -379,10 +514,32 @@ export default function Dashboard() {
   const [showCheckIn, setShowCheckIn] = useState(false)
   // Monthly plan modal — accessible from the Money view
   const [showMonthlyPlan, setShowMonthlyPlan] = useState(false)
+  // Level-up celebration — null or the new level number
+  const [levelUpModal, setLevelUpModal] = useState(null)
 
   useEffect(() => {
     if (profile && checkInDue(profile)) setShowCheckIn(true)
   }, [profile?.completedWizard, profile?.lastCheckIn]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Level-up detection: compare current level to last seen level
+  useEffect(() => {
+    if (!profile?.completedWizard) return
+    const cash        = Number(profile.finances.liquidAssets)  || 0
+    const inv         = Number(profile.finances.investments)   || 0
+    const re          = Number(profile.finances.realEstate)    || 0
+    const debt        = Number(profile.finances.debts)         || 0
+    const nw          = cash + inv + re - debt
+    const currentLevel = wealthLevel(nw)
+    const lastSeen    = profile.gamification?.lastLevelSeen
+
+    if (lastSeen === null || lastSeen === undefined) {
+      // First visit — record silently
+      markLevelSeen(currentLevel)
+    } else if (currentLevel > lastSeen) {
+      // Levelled up!
+      setLevelUpModal(currentLevel)
+    }
+  }, [profile?.completedWizard, profile?.finances]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Seed assets/liabilities from wizard finances the first time we
   // visit the snapshot view, so it isn't empty.
@@ -605,10 +762,19 @@ export default function Dashboard() {
   const runwayProgress = runwayMonths !== null ? Math.min(100, (runwayMonths / 6) * 100) : null
   const runwayBarColor = runwayTone === 'good' ? 'bg-brand-500' : runwayTone === 'warn' ? 'bg-amber-400' : 'bg-red-400'
 
+  const streak = profile.gamification?.checkInStreak || 0
+  const xp     = profile.gamification?.xp           || 0
+
   // Default home
   return (
     <div className="space-y-6">
-      <Header view="home" greeting={greeting} name={profile.personal.fullName || user?.username} />
+      <Header
+        view="home"
+        greeting={greeting}
+        name={profile.personal.fullName || user?.username}
+        streak={streak}
+        xp={xp}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -651,7 +817,7 @@ export default function Dashboard() {
       </div>
 
       {/* WealthMark level progression */}
-      <WealthProgressCard netWorth={netWorth} animDelay="220ms" />
+      <WealthProgressCard netWorth={netWorth} xp={xp} animDelay="220ms" />
 
       {/* Net worth sparkline — grows with each monthly check-in */}
       <NetWorthSparkline checkIns={profile.checkIns} animDelay="270ms" />
@@ -676,15 +842,8 @@ export default function Dashboard() {
         )}
       </section>
 
-      <section className="card animate-fade-slide-up" style={{ animationDelay: '300ms' }}>
-        <h2 className="font-display text-lg font-bold">Suggested next steps</h2>
-        <p className="text-sm text-ink-500 mt-0.5">Tuned to what you shared in the wizard.</p>
-        <div className="mt-5 space-y-4">
-          {suggestions.slice(0, 4).map((s, i) => (
-            <NextStep key={i} icon={s.icon} title={s.title}>{s.text}</NextStep>
-          ))}
-        </div>
-      </section>
+      {/* Today's Mission — Hooked: trigger + action + variable reward */}
+      <TodaysMission suggestions={suggestions} animDelay="300ms" />
 
       {prioritizing && (
         <PrioritizeGoalsModal
@@ -692,6 +851,7 @@ export default function Dashboard() {
           onClose={() => setPrioritizing(false)}
           onSave={(orderedIds) => {
             setPriorities(orderedIds)
+            awardXp(50)
             setPrioritizing(false)
           }}
         />
@@ -703,6 +863,16 @@ export default function Dashboard() {
           onSave={(data) => saveCheckIn(data)}
           onDismiss={() => setShowCheckIn(false)}
           logContribution={logContribution}
+        />
+      )}
+
+      {levelUpModal !== null && (
+        <LevelUpModal
+          level={levelUpModal}
+          onClose={() => {
+            markLevelSeen(levelUpModal)
+            setLevelUpModal(null)
+          }}
         />
       )}
     </div>
@@ -739,7 +909,7 @@ function PrioritizeCTA({ goalCount, onClick }) {
   )
 }
 
-function Header({ view, greeting, name }) {
+function Header({ view, greeting, name, streak = 0, xp = 0 }) {
   const titles = {
     home:     { h: greeting ? `${greeting}, ${name || 'friend'}` : 'Dashboard', s: "Here's the shape of your plan today." },
     snapshot: { h: 'Snapshot',       s: 'Your assets and liabilities — one hex at a time.' },
@@ -748,10 +918,37 @@ function Header({ view, greeting, name }) {
     profile:  { h: 'Your profile',   s: 'The context we use to personalize things.' },
   }
   const t = titles[view] || titles.home
+  const showBadges = view === 'home' && (streak > 0 || xp > 0)
+
   return (
-    <div>
-      <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight">{t.h}</h1>
-      <p className="mt-1 text-ink-500">{t.s}</p>
+    <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight">{t.h}</h1>
+        <p className="mt-1 text-ink-500">{t.s}</p>
+      </div>
+      {showBadges && (
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          {streak > 0 && (
+            <div
+              className="flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 bounce-in"
+              title={`${streak}-month check-in streak`}
+            >
+              <span className="text-sm leading-none">🔥</span>
+              <span className="font-bold text-sm text-amber-700 leading-none">{streak} mo streak</span>
+            </div>
+          )}
+          {xp > 0 && (
+            <div
+              className="flex items-center gap-1.5 rounded-full bg-grape-50 border border-grape-200 px-3 py-1.5 bounce-in"
+              style={{ animationDelay: '80ms' }}
+              title="Total XP earned"
+            >
+              <span className="text-sm leading-none">⚡</span>
+              <span className="font-bold text-sm text-grape-700 leading-none">{xp.toLocaleString()} XP</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,20 +1,18 @@
 /**
- * Six monoline illustrations representing the user's wealth level,
- * keyed off liquid net worth. Each is a single-color SVG using
- * stroke="currentColor", so they inherit color from the parent's
- * `text-*` Tailwind utility.
+ * Six monoline nature illustrations for the user's wealth level.
+ * Growth metaphor: Acorn → Sprout → Sapling → Grove → Canopy → Ancient Oak
  *
  * Usage:
- *   <WealthMark amount={liquidNetWorth} className="h-20 w-28 text-olive-600" />
- *   <WealthLevel3 className="h-16 w-20 text-olive-600" />
+ *   <WealthMark amount={netWorth} className="h-20 w-24 text-brand-600" />
+ *   <WealthLevel3 className="h-16 w-20 text-olive-700" />
  *
- * Thresholds (inclusive upper-bound matches user's stated ranges):
- *   Level 0: < $1,000             — chair & desk
- *   Level 1: $1,000 – $10,000     — shopping cart
- *   Level 2: $10,000 – $100,000   — car
- *   Level 3: $100,000 – $500,000  — house
- *   Level 4: $500,000 – $4M       — bigger house + neat property
- *   Level 5: $4M and above        — multi-floor mixed-use building
+ * Thresholds:
+ *   Level 0: < $1,000              — Acorn Seed
+ *   Level 1: $1,000 – $10,000      — Sprout
+ *   Level 2: $10,000 – $100,000    — Sapling
+ *   Level 3: $100,000 – $500,000   — Grove
+ *   Level 4: $500,000 – $4M        — Canopy
+ *   Level 5: $4M and above         — Ancient Oak
  */
 
 const STROKE = {
@@ -40,146 +38,134 @@ function MarkWrap({ label, children, className = '', viewBox = '0 0 240 180', ..
   )
 }
 
-// ─── Level 0 — Chair & desk ──────────────────────────────────────────
+// ─── Level 0 — Acorn Seed ────────────────────────────────────────────
 export function WealthLevel0(props) {
   return (
-    <MarkWrap label="Wealth level 0 — chair and desk" {...props}>
-      {/* Floor */}
+    <MarkWrap label="Wealth level 0 — acorn seed" {...props}>
+      {/* Ground */}
       <path d="M 20 160 L 220 160" />
-      {/* Chair: backrest, seat, front leg, back leg */}
-      <path d="M 60 85 L 60 125" />
-      <path d="M 55 125 L 100 125" />
-      <path d="M 95 125 L 95 160" />
-      <path d="M 60 125 L 60 160" />
-      {/* Desk: top, two legs, drawer line, drawer handle */}
-      <path d="M 120 100 L 220 100" />
-      <path d="M 130 100 L 130 160" />
-      <path d="M 210 100 L 210 160" />
-      <path d="M 130 122 L 210 122" />
-      <path d="M 165 134 L 180 134" />
+      {/* Soil mound */}
+      <path d="M 88 160 Q 120 148 152 160" />
+      {/* Acorn body — open U-shape; cap closes the top */}
+      <path d="M 102 140 Q 100 160 120 161 Q 140 160 138 140" />
+      {/* Acorn cap */}
+      <path d="M 100 138 Q 120 120 140 138" />
+      {/* Cap rim line */}
+      <path d="M 104 132 L 136 132" />
+      {/* Stem */}
+      <path d="M 120 120 L 120 106" />
+      {/* Tiny bud */}
+      <path d="M 113 106 Q 120 95 127 106" />
     </MarkWrap>
   )
 }
 
-// ─── Level 1 — Shopping cart ─────────────────────────────────────────
+// ─── Level 1 — Sprout ────────────────────────────────────────────────
 export function WealthLevel1(props) {
   return (
-    <MarkWrap label="Wealth level 1 — shopping cart" {...props}>
-      {/* Floor */}
+    <MarkWrap label="Wealth level 1 — sprout" {...props}>
+      {/* Ground */}
       <path d="M 20 160 L 220 160" />
-      {/* Handle bar */}
-      <path d="M 30 70 L 55 70" />
-      {/* Diagonal connector down to back-top of basket */}
-      <path d="M 55 70 L 78 96" />
-      {/* Basket — trapezoid (top, right, bottom, left) */}
-      <path d="M 75 95 L 200 95" />
-      <path d="M 200 95 L 180 130" />
-      <path d="M 180 130 L 95 130" />
-      <path d="M 95 130 L 75 95" />
-      {/* Wheel struts + wheels */}
-      <path d="M 100 130 L 100 142" />
-      <path d="M 175 130 L 175 142" />
-      <circle cx="100" cy="150" r="9" />
-      <circle cx="175" cy="150" r="9" />
+      {/* Soil mound */}
+      <path d="M 84 160 Q 120 144 156 160" />
+      {/* Main stem */}
+      <path d="M 120 144 L 120 86" />
+      {/* Left leaf — curves out and returns */}
+      <path d="M 120 130 Q 98 116 93 98 Q 110 108 120 122" />
+      {/* Right leaf */}
+      <path d="M 120 116 Q 142 102 147 84 Q 130 94 120 108" />
+      {/* Tiny top bud */}
+      <path d="M 113 86 Q 120 74 127 86" />
     </MarkWrap>
   )
 }
 
-// ─── Level 2 — Car ───────────────────────────────────────────────────
+// ─── Level 2 — Sapling ───────────────────────────────────────────────
 export function WealthLevel2(props) {
   return (
-    <MarkWrap label="Wealth level 2 — car" {...props}>
-      {/* Floor */}
+    <MarkWrap label="Wealth level 2 — sapling" {...props}>
+      {/* Ground */}
       <path d="M 20 160 L 220 160" />
-      {/* Sedan silhouette: left bumper → hood → windshield → roof → rear → trunk → right bumper */}
-      <path d="M 25 130 L 25 115 Q 28 105 45 105 L 75 105 L 95 75 L 150 75 L 170 105 L 200 105 Q 218 105 220 115 L 220 130" />
-      {/* B-pillar (separates front and rear windows) */}
-      <path d="M 122 75 L 122 105" />
-      {/* Wheels */}
-      <circle cx="65" cy="145" r="15" />
-      <circle cx="180" cy="145" r="15" />
+      {/* Trunk */}
+      <path d="M 120 160 L 120 108" />
+      {/* Small left twig */}
+      <path d="M 120 134 Q 103 124 95 114" />
+      {/* Small right twig */}
+      <path d="M 120 128 Q 137 118 145 108" />
+      {/* Crown — rounded canopy */}
+      <path d="M 95 112 Q 95 68 120 64 Q 145 68 145 112 Q 145 128 120 130 Q 95 128 95 112" />
     </MarkWrap>
   )
 }
 
-// ─── Level 3 — House ─────────────────────────────────────────────────
+// ─── Level 3 — Grove ─────────────────────────────────────────────────
 export function WealthLevel3(props) {
   return (
-    <MarkWrap label="Wealth level 3 — house" {...props}>
-      {/* Floor */}
+    <MarkWrap label="Wealth level 3 — grove" {...props}>
+      {/* Ground */}
       <path d="M 20 160 L 220 160" />
-      {/* Walls */}
-      <path d="M 70 95 L 70 160" />
-      <path d="M 170 95 L 170 160" />
-      {/* Roof (with eaves overhang) */}
-      <path d="M 60 95 L 120 50 L 180 95" />
-      {/* Door */}
-      <path d="M 110 160 L 110 130 L 130 130 L 130 160" />
-      {/* Left window */}
-      <path d="M 82 110 L 82 125 L 97 125 L 97 110 Z" />
-      {/* Right window */}
-      <path d="M 143 110 L 143 125 L 158 125 L 158 110 Z" />
+      {/* Trunk */}
+      <path d="M 120 160 L 120 102" />
+      {/* Left branch */}
+      <path d="M 120 136 L 90 120" />
+      {/* Right branch */}
+      <path d="M 120 130 L 150 114" />
+      {/* Fuller crown */}
+      <path d="M 76 108 Q 76 56 120 52 Q 164 56 164 108 Q 164 132 120 135 Q 76 132 76 108" />
     </MarkWrap>
   )
 }
 
-// ─── Level 4 — Bigger house with neat property ───────────────────────
+// ─── Level 4 — Canopy ────────────────────────────────────────────────
 export function WealthLevel4(props) {
   return (
-    <MarkWrap label="Wealth level 4 — bigger house with neat property" {...props}>
-      {/* Floor */}
-      <path d="M 10 160 L 230 160" />
-      {/* Tree (left): trunk + crown */}
-      <path d="M 28 160 L 28 140" />
-      <circle cx="28" cy="124" r="16" />
-      {/* House walls */}
-      <path d="M 65 85 L 65 160" />
-      <path d="M 185 85 L 185 160" />
-      {/* House roof */}
-      <path d="M 55 85 L 125 35 L 195 85" />
-      {/* Chimney (open at bottom — sits on the roof slope) */}
-      <path d="M 150 30 L 150 56" />
-      <path d="M 165 30 L 165 56" />
-      <path d="M 150 30 L 165 30" />
-      {/* Front door */}
-      <path d="M 115 160 L 115 125 L 140 125 L 140 160" />
-      {/* Two front windows */}
-      <path d="M 78 100 L 78 118 L 98 118 L 98 100 Z" />
-      <path d="M 152 100 L 152 118 L 172 118 L 172 100 Z" />
-      {/* Hedge (right) — three small scallops */}
-      <path d="M 198 160 Q 203 148 208 160 Q 213 148 218 160 Q 223 148 228 160" />
+    <MarkWrap label="Wealth level 4 — canopy" {...props}>
+      {/* Ground */}
+      <path d="M 20 160 L 220 160" />
+      {/* Root flares */}
+      <path d="M 109 160 Q 108 146 115 130" />
+      <path d="M 131 160 Q 132 146 125 130" />
+      {/* Trunk (two converging lines) */}
+      <path d="M 115 130 L 118 102" />
+      <path d="M 125 130 L 122 102" />
+      {/* Left major branch */}
+      <path d="M 118 110 Q 84 96 70 78" />
+      {/* Right major branch */}
+      <path d="M 122 110 Q 156 96 170 78" />
+      {/* Left sub-branch */}
+      <path d="M 70 78 Q 54 66 56 50" />
+      {/* Right sub-branch */}
+      <path d="M 170 78 Q 186 66 182 50" />
+      {/* Large crown */}
+      <path d="M 50 92 Q 50 38 120 34 Q 190 38 190 92 Q 190 132 120 136 Q 50 132 50 92" />
     </MarkWrap>
   )
 }
 
-// ─── Level 5 — Multi-floor mixed-use ─────────────────────────────────
+// ─── Level 5 — Ancient Oak ───────────────────────────────────────────
 export function WealthLevel5(props) {
   return (
-    <MarkWrap label="Wealth level 5 — multi-floor mixed-use building" {...props}>
-      {/* Floor */}
-      <path d="M 20 170 L 220 170" />
-      {/* Building outline (open at bottom — floor line is the base) */}
-      <path d="M 60 30 L 60 170" />
-      <path d="M 180 30 L 180 170" />
-      <path d="M 60 30 L 180 30" />
-      {/* Floor dividers */}
-      <path d="M 60 75 L 180 75" />
-      <path d="M 60 110 L 180 110" />
-      {/* Top-floor windows (3) */}
-      <path d="M 75 45 L 75 65 L 95 65 L 95 45 Z" />
-      <path d="M 110 45 L 110 65 L 130 65 L 130 45 Z" />
-      <path d="M 145 45 L 145 65 L 165 65 L 165 45 Z" />
-      {/* Mid-floor windows (3) */}
-      <path d="M 75 83 L 75 103 L 95 103 L 95 83 Z" />
-      <path d="M 110 83 L 110 103 L 130 103 L 130 83 Z" />
-      <path d="M 145 83 L 145 103 L 165 103 L 165 83 Z" />
-      {/* Awning bar (separates retail from residence) */}
-      <path d="M 55 122 L 185 122" />
-      {/* Storefront door */}
-      <path d="M 110 170 L 110 140 L 130 140 L 130 170" />
-      {/* Storefront windows */}
-      <path d="M 70 132 L 70 165 L 105 165 L 105 132 Z" />
-      <path d="M 135 132 L 135 165 L 175 165 L 175 132 Z" />
+    <MarkWrap label="Wealth level 5 — ancient oak" viewBox="0 0 240 185" {...props}>
+      {/* Ground */}
+      <path d="M 10 170 L 230 170" />
+      {/* Buttress roots */}
+      <path d="M 106 170 Q 94 154 107 134" />
+      <path d="M 134 170 Q 146 154 133 134" />
+      <path d="M 100 170 Q 80 164 70 154" />
+      <path d="M 140 170 Q 160 164 170 154" />
+      {/* Wide trunk */}
+      <path d="M 107 134 L 113 96" />
+      <path d="M 133 134 L 127 96" />
+      <path d="M 113 96 Q 120 93 127 96" />
+      {/* Four major branches */}
+      <path d="M 113 104 Q 77 90 58 70" />
+      <path d="M 127 104 Q 163 90 182 70" />
+      <path d="M 58 70 Q 40 54 44 34" />
+      <path d="M 58 70 Q 56 52 70 38" />
+      <path d="M 182 70 Q 200 54 196 34" />
+      <path d="M 182 70 Q 184 52 170 38" />
+      {/* Enormous crown */}
+      <path d="M 26 88 Q 26 16 120 12 Q 214 16 214 88 Q 214 136 120 140 Q 26 136 26 88" />
     </MarkWrap>
   )
 }
@@ -187,19 +173,19 @@ export function WealthLevel5(props) {
 // ─── Wrapper + helpers ───────────────────────────────────────────────
 const MARKS = [WealthLevel0, WealthLevel1, WealthLevel2, WealthLevel3, WealthLevel4, WealthLevel5]
 
+export const WEALTH_NAMES = ['Seed', 'Sprout', 'Sapling', 'Grove', 'Canopy', 'Ancient Oak']
+
 export const WEALTH_LEVELS = [
-  { id: 0, label: 'Level 0', range: 'Below $1,000',         illustration: 'Chair & desk' },
-  { id: 1, label: 'Level 1', range: '$1,000 – $10,000',     illustration: 'Shopping cart' },
-  { id: 2, label: 'Level 2', range: '$10,000 – $100,000',   illustration: 'Car' },
-  { id: 3, label: 'Level 3', range: '$100,000 – $500,000',  illustration: 'House' },
-  { id: 4, label: 'Level 4', range: '$500,000 – $4M',       illustration: 'Bigger house + property' },
-  { id: 5, label: 'Level 5', range: '$4M and above',        illustration: 'Mixed-use building' },
+  { id: 0, label: 'Level 0', range: 'Below $1,000',         illustration: 'Acorn seed' },
+  { id: 1, label: 'Level 1', range: '$1,000 – $10,000',     illustration: 'Sprout' },
+  { id: 2, label: 'Level 2', range: '$10,000 – $100,000',   illustration: 'Sapling' },
+  { id: 3, label: 'Level 3', range: '$100,000 – $500,000',  illustration: 'Grove' },
+  { id: 4, label: 'Level 4', range: '$500,000 – $4M',       illustration: 'Canopy' },
+  { id: 5, label: 'Level 5', range: '$4M and above',        illustration: 'Ancient Oak' },
 ]
 
 /**
- * Map a dollar amount → wealth level (0–5), per the user's stated bands.
- * Boundaries are inclusive on the upper end (so $1,000 is still Level 0,
- * matching the spec where Level 1 starts at $1,000.01).
+ * Map a dollar amount → wealth level (0–5).
  */
 export function wealthLevel(amount) {
   const n = Number(amount) || 0

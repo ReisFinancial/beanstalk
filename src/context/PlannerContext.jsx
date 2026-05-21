@@ -55,6 +55,11 @@ const emptyProfile = {
   preferences: {
     focusArea: '', // money | career | health | relationships | learning
   },
+  gamification: {
+    xp: 0,
+    checkInStreak: 0,
+    lastLevelSeen: null,
+  },
 }
 
 function readProfiles() {
@@ -288,7 +293,23 @@ export function PlannerProvider({ children }) {
     })
   }, [])
 
-  // Save a monthly check-in. Updates finances in place and appends a snapshot.
+  const awardXp = useCallback((amount) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      const g = prev.gamification || {}
+      return { ...prev, gamification: { ...g, xp: (g.xp || 0) + amount } }
+    })
+  }, [])
+
+  const markLevelSeen = useCallback((level) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      const g = prev.gamification || {}
+      return { ...prev, gamification: { ...g, lastLevelSeen: level } }
+    })
+  }, [])
+
+  // Save a monthly check-in. Updates finances, appends snapshot, awards XP + streak.
   const saveCheckIn = useCallback((newFinances) => {
     setProfile((prev) => {
       if (!prev) return prev
@@ -302,11 +323,23 @@ export function PlannerProvider({ children }) {
       const netWorth    = cash + inv + re - debt
       const today = new Date().toISOString().slice(0, 10)
       const entry = { date: today, finances: { ...newFinances }, netWorth, savingsRate }
+
+      // Streak: consecutive months of check-ins
+      const lastDate = prev.lastCheckIn ? new Date(prev.lastCheckIn + 'T00:00:00') : null
+      const now = new Date()
+      const isConsecutive = lastDate && (
+        (lastDate.getFullYear() === now.getFullYear() && lastDate.getMonth() === now.getMonth() - 1) ||
+        (lastDate.getMonth() === 11 && now.getMonth() === 0 && lastDate.getFullYear() === now.getFullYear() - 1)
+      )
+      const g = prev.gamification || {}
+      const newStreak = isConsecutive ? (g.checkInStreak || 0) + 1 : 1
+
       return {
         ...prev,
         finances: { ...prev.finances, ...newFinances },
         checkIns: [...(prev.checkIns || []), entry],
         lastCheckIn: today,
+        gamification: { ...g, xp: (g.xp || 0) + 100, checkInStreak: newStreak },
       }
     })
   }, [])
@@ -336,6 +369,8 @@ export function PlannerProvider({ children }) {
       completeWizard,
       logContribution,
       saveCheckIn,
+      awardXp,
+      markLevelSeen,
       resetProfile,
     }),
     [
@@ -343,7 +378,8 @@ export function PlannerProvider({ children }) {
       addGoal, removeGoal, updateGoal,
       addAsset, removeAsset, updateAsset,
       addLiability, removeLiability, updateLiability,
-      updateRate, seedFromFinances, completeWizard, logContribution, saveCheckIn, resetProfile,
+      updateRate, seedFromFinances, completeWizard, logContribution, saveCheckIn,
+      awardXp, markLevelSeen, resetProfile,
     ],
   )
 
