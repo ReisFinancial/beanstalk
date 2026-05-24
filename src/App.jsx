@@ -6,6 +6,7 @@ import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import Wizard from './pages/Wizard.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Gameboard from './pages/Gameboard.jsx'
 import Layout from './components/Layout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/wizard" element={<Wizard />} />
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/gameboard" element={<Gameboard />} />
         </Route>
       </Route>
 

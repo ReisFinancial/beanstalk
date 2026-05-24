@@ -16,6 +16,7 @@ const navItems = [
   { key: 'snapshot', to: '/dashboard?view=snapshot',  label: 'Snapshot',  icon: '🔷' },
   { key: 'goals',    to: '/dashboard?view=goals',     label: 'Goals',     icon: '🎯' },
   { key: 'money',    to: '/dashboard?view=money',     label: 'Money',     icon: '💸' },
+  { key: 'play',     to: '/gameboard',                label: 'Play',      icon: '🎮' },
   { key: 'profile',  to: '/dashboard?view=profile',   label: 'Profile',   icon: '🙂' },
 ]
 
@@ -26,9 +27,13 @@ export default function Layout() {
   const [searchParams] = useSearchParams()
 
   const onDashboard = location.pathname === '/dashboard'
+  const onGameboard = location.pathname === '/gameboard'
   const currentView = searchParams.get('view') || 'home'
 
-  const isActive = (key) => onDashboard && currentView === key
+  const isActive = (key) => {
+    if (key === 'play') return onGameboard
+    return onDashboard && currentView === key
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -79,14 +84,14 @@ export default function Layout() {
         className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200
                    pb-[env(safe-area-inset-bottom)]"
       >
-        <ul className="grid grid-cols-5">
+        <ul className="grid grid-cols-6">
           {navItems.map((item) => {
             const active = isActive(item.key)
             return (
               <li key={item.key}>
                 <Link
                   to={item.to}
-                  className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-semibold ${
+                  className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold ${
                     active ? 'text-grape-700' : 'text-ink-500'
                   }`}
                 >

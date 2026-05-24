@@ -13,13 +13,14 @@ const STEPS = [
   { id: 'review',     title: 'Review',      emoji: '✨' },
 ]
 
+// Goal categories describe the action the goal represents. Selection
+// drives which extra input shows (target $ for "investment", liability
+// picker for "debt").
 const GOAL_CATEGORIES = [
-  { id: 'money',        label: 'Money',        emoji: '💰' },
-  { id: 'career',       label: 'Career',       emoji: '🧑‍💻' },
-  { id: 'health',       label: 'Health',       emoji: '💪' },
-  { id: 'learning',     label: 'Learning',     emoji: '📚' },
-  { id: 'relationships',label: 'Relationships',emoji: '❤️' },
-  { id: 'lifestyle',    label: 'Lifestyle',    emoji: '🌿' },
+  { id: 'debt',       label: 'Paying down a debt',           emoji: '🔻' },
+  { id: 'investment', label: 'Hitting an investment target', emoji: '📈' },
+  { id: 'spending',   label: 'Increase spending allocation', emoji: '💸' },
+  { id: 'other',      label: 'Other',                        emoji: '🎯' },
 ]
 
 const HORIZONS = [
@@ -29,10 +30,10 @@ const HORIZONS = [
 ]
 
 const SAMPLE_GOALS = [
-  { title: 'Build a 6-month emergency fund', category: 'money',    horizon: 'mid'   },
-  { title: 'Exercise 3x per week',           category: 'health',   horizon: 'short' },
-  { title: 'Read 12 books this year',        category: 'learning', horizon: 'short' },
-  { title: 'Buy a home',                     category: 'money',    horizon: 'long'  },
+  { title: 'Build a 6-month emergency fund', category: 'investment', horizon: 'mid',   targetAmount: 15000 },
+  { title: 'Pay off credit card debt',       category: 'debt',       horizon: 'short' },
+  { title: 'Save for a down payment',        category: 'investment', horizon: 'long',  targetAmount: 50000 },
+  { title: 'Eat out twice a week',           category: 'spending',   horizon: 'short' },
 ]
 
 function uid() {
@@ -265,16 +266,37 @@ function LocationFields({ country, region, onChange }) {
 }
 
 function StepGoals({ profile, setGoals, setPriorities }) {
-  const [draft, setDraft] = useState({ title: '', category: 'money', horizon: 'mid' })
+  const [draft, setDraft] = useState({
+    title: '',
+    category: 'other',
+    horizon: 'mid',
+    targetAmount: '',
+    spendingBucket: 'discretionary',
+    spendingIncrease: '',
+  })
 
   const addGoal = () => {
     const t = draft.title.trim()
     if (!t) return
-    const goal = { id: uid(), title: t, category: draft.category, horizon: draft.horizon }
+    const goal = {
+      id: uid(),
+      title: t,
+      category: draft.category,
+      horizon: draft.horizon,
+    }
+    if (draft.category === 'investment' || draft.category === 'other') {
+      const tgt = Number(draft.targetAmount)
+      goal.targetAmount = Number.isFinite(tgt) && tgt >= 0 ? tgt : 0
+    }
+    if (draft.category === 'spending') {
+      const inc = Number(draft.spendingIncrease)
+      goal.spendingBucket   = draft.spendingBucket
+      goal.spendingIncrease = Number.isFinite(inc) && inc >= 0 ? inc : 0
+    }
     const next = [...profile.goals, goal]
     setGoals(next)
     setPriorities([...(profile.priorities || []), goal.id])
-    setDraft({ ...draft, title: '' })
+    setDraft({ ...draft, title: '', targetAmount: '', spendingIncrease: '' })
   }
 
   const addSample = (s) => {
@@ -302,18 +324,84 @@ function StepGoals({ profile, setGoals, setPriorities }) {
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addGoal())}
         />
-        <div className="flex flex-wrap gap-2">
-          {GOAL_CATEGORIES.map((c) => (
-            <Choice
-              key={c.id}
-              emoji={c.emoji}
-              selected={draft.category === c.id}
-              onClick={() => setDraft({ ...draft, category: c.id })}
-            >
-              {c.label}
-            </Choice>
-          ))}
+        <div>
+          <label className="label" htmlFor="wizard-goal-cat">Category</label>
+          <select
+            id="wizard-goal-cat"
+            className="input"
+            value={draft.category}
+            onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+          >
+            {GOAL_CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.emoji}  {c.label}
+              </option>
+            ))}
+          </select>
         </div>
+        {(draft.category === 'investment' || draft.category === 'other') && (
+          <div>
+            <label className="label" htmlFor="wizard-goal-target">
+              {draft.category === 'investment' ? 'Target amount' : 'Estimated cost'}
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+              <input
+                id="wizard-goal-target"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                className="input pl-8"
+                placeholder="e.g. 25000"
+                value={draft.targetAmount}
+                onChange={(e) => setDraft({ ...draft, targetAmount: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+        {draft.category === 'debt' && (
+          <p className="text-[11px] text-ink-400">
+            You can link this goal to a specific liability after the wizard, from the Goals page.
+          </p>
+        )}
+        {draft.category === 'spending' && (
+          <div className="space-y-3">
+            <div>
+              <label className="label" htmlFor="wizard-goal-bucket">Which area to increase?</label>
+              <select
+                id="wizard-goal-bucket"
+                className="input"
+                value={draft.spendingBucket}
+                onChange={(e) => setDraft({ ...draft, spendingBucket: e.target.value })}
+              >
+                <option value="wealthGen">🌱 Wealth generation</option>
+                <option value="bareNec">🧱 Bare necessities</option>
+                <option value="discretionary">🎈 Discretionary spending</option>
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="wizard-goal-increase">Increase by</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                <input
+                  id="wizard-goal-increase"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="1"
+                  className="input pl-8 pr-12"
+                  placeholder="0"
+                  value={draft.spendingIncrease}
+                  onChange={(e) => setDraft({ ...draft, spendingIncrease: e.target.value })}
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">
+                  /mo
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           {HORIZONS.map((h) => (
             <Choice
