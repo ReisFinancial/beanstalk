@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlanner } from '../context/PlannerContext.jsx'
 
@@ -106,15 +106,19 @@ function targetValueAt(tile, month) {
 // Build the starting board from the planner profile.
 function buildBoard(profile) {
   const rates = profile?.rates
-  const assetTiles = (profile?.assets || []).map((a) => ({
-    id: `asset:${a.id}`,
-    label: a.label || 'Asset',
-    icon: ASSET_ICON[a.subtype] || '💰',
-    baseValue: Number(a.amount) || 0,
-    baseMonth: 0,
-    rate: annualRatePct('asset', a, rates),
-    pmt: Number(a.monthlyPayment) || 0,
-  }))
+  const assetTiles = (profile?.assets || []).map((a) => {
+    const subtype = a.subtype || inferSubtype('asset', a.label)
+    return {
+      id: `asset:${a.id}`,
+      label: a.label || 'Asset',
+      icon: ASSET_ICON[subtype] || '💰',
+      subtype,
+      baseValue: Number(a.amount) || 0,
+      baseMonth: 0,
+      rate: annualRatePct('asset', a, rates),
+      pmt: Number(a.monthlyPayment) || 0,
+    }
+  })
   const liabilityTiles = (profile?.liabilities || []).map((l) => ({
     id: `liability:${l.id}`,
     kind: 'liability',
@@ -165,6 +169,21 @@ function GameboardInner({ profile }) {
   const [floorMonth, setFloorMonth] = useState(0) // time only moves forward
   const [draggingId, setDraggingId] = useState(null)
   const [hoverId, setHoverId]       = useState(null)
+  const [showContributions, setShowContributions] = useState(false)
+  const [showLoanModal, setShowLoanModal]         = useState(false)
+
+  // Every meaningful move on the board (capture, contribution change, loan)
+  // is logged here so the sandbox plan becomes a real-life checklist.
+  const [actions, setActions] = useState([])
+  const addActions = (...items) =>
+    setActions((prev) => [
+      ...prev,
+      ...items.map((a) => ({ id: crypto.randomUUID(), done: false, ...a })),
+    ])
+  const toggleAction = (id) =>
+    setActions((prev) => prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a)))
+  const removeAction = (id) =>
+    setActions((prev) => prev.filter((a) => a.id !== id))
 
   const { assetTiles, targetTiles } = board
   const draggingAsset = assetTiles.find((a) => a.id === draggingId) || null
@@ -176,12 +195,23 @@ function GameboardInner({ profile }) {
     .filter((t) => t.captured)
     .reduce((m, t) => Math.max(m, t.capturedMonth || 0), 0)
 
-  // Strongest asset right now — used for idle "how short" hints.
-  const strongestAssetVal = assetTiles.length
-    ? Math.max(...assetTiles.map((a) => assetValueAt(a, month)))
+  // Strongest asset right now — used for idle "how short" hints. Real
+  // estate is excluded from the liability figure since it can't clear debt.
+  const assetVals = assetTiles.map((a) => ({
+    subtype: a.subtype,
+    val: assetValueAt(a, month),
+  }))
+  const strongestAny = assetVals.length
+    ? Math.max(...assetVals.map((x) => x.val))
     : 0
+  const nonRealEstate = assetVals.filter((x) => x.subtype !== 'realEstate')
+  const strongestNonRE = nonRealEstate.length
+    ? Math.max(...nonRealEstate.map((x) => x.val))
+    : 0
+  const strongestFor = (target) =>
+    target.kind === 'liability' ? strongestNonRE : strongestAny
   const anyCapturableNow = remaining.some(
-    (t) => targetValueAt(t, month) <= strongestAssetVal,
+    (t) => targetValueAt(t, month) <= strongestFor(t),
   )
 
   // Live net worth at the current timeline position.
@@ -193,37 +223,149 @@ function GameboardInner({ profile }) {
 
   const canCapture = (target) => {
     if (!draggingAsset || target.captured) return false
+    // Rule: real estate can't be liquidated to wipe out a debt.
+    if (draggingAsset.subtype === 'realEstate' && target.kind === 'liability') {
+      return false
+    }
     return assetValueAt(draggingAsset, month) >= targetValueAt(target, month)
   }
 
   // ── Capture: asset takes the target, then shrinks by its value ──────
+  // Real estate is the exception — the house isn't sold to fund a goal,
+  // it's borrowed against. The asset keeps its value and a matching amount
+  // is piled onto an existing mortgage (or a fresh mortgage tile is born).
   const handleCapture = (targetId) => {
     setBoard((prev) => {
       const asset  = prev.assetTiles.find((a) => a.id === draggingId)
       const target = prev.targetTiles.find((t) => t.id === targetId)
       if (!asset || !target || target.captured) return prev
+      // Rule: real estate can't be liquidated to wipe out a debt.
+      if (asset.subtype === 'realEstate' && target.kind === 'liability') return prev
       const aVal = assetValueAt(asset, month)
       const tVal = targetValueAt(target, month)
       if (aVal < tVal) return prev // not enough — reject
+
+      const markCaptured = (t, extra) =>
+        t.id === target.id
+          ? {
+              ...t,
+              captured: true,
+              capturedBy: asset.id,
+              capturedValue: tVal,
+              capturedMonth: month,
+              ...extra,
+            }
+          : t
+
+      // Real estate funds a goal via mortgage debt.
+      if (asset.subtype === 'realEstate' && target.kind === 'goal') {
+        // Prefer an uncaptured mortgage; fall back to any mortgage for rate.
+        const liveMortgage = prev.targetTiles.find(
+          (t) => t.kind === 'liability' && !t.captured && t.subtype === 'mortgage',
+        )
+        const anyMortgage = prev.targetTiles.find(
+          (t) => t.kind === 'liability' && t.subtype === 'mortgage',
+        )
+        const mortgageRate = anyMortgage?.rate || 5
+        if (liveMortgage) {
+          // Top up the existing mortgage — re-anchor so the new balance
+          // compounds from today, not retroactively.
+          const mortVal = targetValueAt(liveMortgage, month)
+          return {
+            assetTiles: prev.assetTiles,
+            targetTiles: prev.targetTiles.map((t) => {
+              if (t.id === target.id) return markCaptured(t, { capturedVia: 'mortgage' })
+              if (t.id === liveMortgage.id) {
+                return { ...t, baseValue: mortVal + tVal, baseMonth: month }
+              }
+              return t
+            }),
+          }
+        }
+        // No live mortgage — spin up a new one.
+        const newMortgage = {
+          id: `mortgage:${crypto.randomUUID()}`,
+          kind: 'liability',
+          label: 'Mortgage (top-up)',
+          icon: LIABILITY_ICON.mortgage,
+          subtype: 'mortgage',
+          baseValue: tVal,
+          baseMonth: month,
+          rate: mortgageRate,
+          pmt: 0,
+          captured: false,
+        }
+        return {
+          assetTiles: prev.assetTiles,
+          targetTiles: [
+            ...prev.targetTiles.map((t) => markCaptured(t, { capturedVia: 'mortgage' })),
+            newMortgage,
+          ],
+        }
+      }
+
+      // Standard capture — asset shrinks by what it took.
       return {
         assetTiles: prev.assetTiles.map((a) =>
           a.id === asset.id
             ? { ...a, baseValue: aVal - tVal, baseMonth: month }
             : a,
         ),
-        targetTiles: prev.targetTiles.map((t) =>
-          t.id === target.id
-            ? {
-                ...t,
-                captured: true,
-                capturedBy: asset.id,
-                capturedValue: tVal,
-                capturedMonth: month,
-              }
-            : t,
-        ),
+        targetTiles: prev.targetTiles.map((t) => markCaptured(t)),
       }
     })
+
+    // ── Log the move as a real-world action plan step ────────────────
+    // Re-derive context from current state so the action copy reads right.
+    const asset  = assetTiles.find((a) => a.id === draggingId)
+    const target = targetTiles.find((t) => t.id === targetId)
+    if (asset && target && !target.captured) {
+      const tVal = targetValueAt(target, month)
+      if (asset.subtype === 'realEstate' && target.kind === 'goal') {
+        const liveMortgage = targetTiles.find(
+          (t) => t.kind === 'liability' && !t.captured && t.subtype === 'mortgage',
+        )
+        const anyMortgage = targetTiles.find(
+          (t) => t.kind === 'liability' && t.subtype === 'mortgage',
+        )
+        const mortgageRate = anyMortgage?.rate || 5
+        addActions(
+          {
+            kind: 'capture',
+            emoji: target.icon,
+            title: `Fund "${target.label}" using ${asset.label}`,
+            detail: `${fmtMoney(tVal)} borrowed against the property at ${fmtTimeline(month)}.`,
+            month,
+          },
+          liveMortgage
+            ? {
+                kind: 'mortgage',
+                emoji: LIABILITY_ICON.mortgage,
+                title: `Top up ${liveMortgage.label} by ${fmtMoney(tVal)}`,
+                detail: `Refinance or open a HELOC — aim for around ${mortgageRate}% APR.`,
+                month,
+              }
+            : {
+                kind: 'mortgage',
+                emoji: LIABILITY_ICON.mortgage,
+                title: `Open a new mortgage for ${fmtMoney(tVal)}`,
+                detail: `Target an APR near ${mortgageRate}% and budget the payment in.`,
+                month,
+              },
+        )
+      } else {
+        addActions({
+          kind: 'capture',
+          emoji: target.icon,
+          title: target.kind === 'goal'
+            ? `Spend ${fmtMoney(tVal)} from ${asset.label} on "${target.label}"`
+            : `Use ${asset.label} to pay off "${target.label}"`,
+          detail: `At ${fmtTimeline(month)} on the timeline.`,
+          month,
+        })
+      }
+    }
+
     setFloorMonth(month) // committing an action locks the timeline forward
     setDraggingId(null)
     setHoverId(null)
@@ -235,6 +377,137 @@ function GameboardInner({ profile }) {
     setFloorMonth(0)
     setDraggingId(null)
     setHoverId(null)
+    setActions([])
+  }
+
+  // Apply edited monthly contributions. Each touched tile is re-anchored
+  // to the current month (value-preserving) so the new contribution
+  // applies going forward rather than retroactively. Because re-anchoring
+  // freezes a tile's history, changing anything also locks the timeline
+  // forward — same forward-only rule as committing a capture.
+  const handleSaveContributions = (newPmts) => {
+    const changes = []
+    assetTiles.forEach((a) => {
+      const next = newPmts[a.id]
+      if (next != null && next !== a.pmt) {
+        changes.push({ kind: 'asset', tile: a, oldPmt: a.pmt, newPmt: next })
+      }
+    })
+    targetTiles.forEach((t) => {
+      if (t.kind !== 'liability' || t.captured) return
+      const next = newPmts[t.id]
+      if (next != null && next !== t.pmt) {
+        changes.push({ kind: 'liability', tile: t, oldPmt: t.pmt, newPmt: next })
+      }
+    })
+    setBoard((prev) => ({
+      assetTiles: prev.assetTiles.map((a) => {
+        const next = newPmts[a.id]
+        if (next == null || next === a.pmt) return a
+        return { ...a, baseValue: assetValueAt(a, month), baseMonth: month, pmt: next }
+      }),
+      targetTiles: prev.targetTiles.map((t) => {
+        if (t.kind !== 'liability' || t.captured) return t
+        const next = newPmts[t.id]
+        if (next == null || next === t.pmt) return t
+        return { ...t, baseValue: targetValueAt(t, month), baseMonth: month, pmt: next }
+      }),
+    }))
+    if (changes.length) {
+      setFloorMonth(month)
+      addActions(
+        ...changes.map((c) => ({
+          kind: 'contribution',
+          emoji: c.tile.icon,
+          title: c.kind === 'asset'
+            ? c.newPmt > 0
+              ? `Set ${c.tile.label} contribution to ${fmtMoney(c.newPmt)}/mo`
+              : `Pause monthly contributions to ${c.tile.label}`
+            : c.newPmt > 0
+              ? `Send ${fmtMoney(c.newPmt)}/mo toward ${c.tile.label}`
+              : `Pause paydown on ${c.tile.label}`,
+          detail: c.oldPmt
+            ? `Was ${fmtMoney(c.oldPmt)}/mo · starts at ${fmtTimeline(month)}.`
+            : `New cashflow starting at ${fmtTimeline(month)}.`,
+          month,
+        })),
+      )
+    }
+  }
+
+  // ── Powerup: take out a loan ────────────────────────────────────────
+  // A loan always adds a debt tile that accrues interest. The borrowed cash
+  // either lands in a brand-new "loan cash" asset tile, or gets deposited
+  // into an existing asset's balance — the user's choice. Either way, net
+  // worth is unchanged the moment the loan is created.
+  const handleAddLoan = ({ amount, rate, label, depositTo }) => {
+    const amt = Math.round(Number(amount)) || 0
+    if (amt <= 0) return
+    const groupId = crypto.randomUUID()
+    const name = (label && label.trim()) || 'Loan'
+    const loanDebt = {
+      id: `loanL:${groupId}`,
+      kind: 'liability',
+      label: `${name} · debt`,
+      icon: '🧾',
+      subtype: 'lineOfCredit',
+      isLoan: true,
+      baseValue: amt,
+      baseMonth: month,
+      rate: Number(rate) || 0,
+      pmt: 0,
+      captured: false,
+    }
+    setBoard((prev) => {
+      // Deposit into an existing asset — re-anchor to today so the new
+      // balance compounds from here, not retroactively.
+      const target = depositTo && depositTo !== 'new'
+        ? prev.assetTiles.find((a) => a.id === depositTo)
+        : null
+      const nextAssets = target
+        ? prev.assetTiles.map((a) =>
+            a.id === target.id
+              ? { ...a, baseValue: assetValueAt(a, month) + amt, baseMonth: month }
+              : a,
+          )
+        : [
+            ...prev.assetTiles,
+            {
+              id: `loanA:${groupId}`,
+              label: `${name} · cash`,
+              icon: '💵',
+              subtype: 'savings', // borrowed cash — never real estate, so it can clear debt
+              isLoan: true,
+              baseValue: amt,
+              baseMonth: month,
+              rate: 0,            // idle cash sits flat until you deploy it
+              pmt: 0,
+            },
+          ]
+      return {
+        assetTiles: nextAssets,
+        targetTiles: [...prev.targetTiles, loanDebt],
+      }
+    })
+
+    // Log the loan as an action-plan step.
+    const depositAsset = depositTo && depositTo !== 'new'
+      ? assetTiles.find((a) => a.id === depositTo)
+      : null
+    const named = (label && label.trim()) || 'Loan'
+    addActions({
+      kind: 'loan',
+      emoji: '💵',
+      title: `Apply for a ${fmtMoney(amt)} loan${named !== 'Loan' ? ` (${named})` : ''}`,
+      detail: `${Number(rate) || 0}% APR · ${
+        depositAsset
+          ? `funds deposited to ${depositAsset.label}`
+          : 'park the cash to deploy later'
+      }.`,
+      month,
+    })
+
+    setFloorMonth(month)
   }
 
   const jump = (deltaMonths) => {
@@ -274,9 +547,17 @@ function GameboardInner({ profile }) {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <Header />
-        <button onClick={handleReset} className="btn-ghost !py-2 !px-3 text-sm shrink-0">
-          ↺ Reset board
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => setShowContributions(true)}
+            className="btn-secondary !py-2 !px-3 text-sm"
+          >
+            ✎ Contributions
+          </button>
+          <button onClick={handleReset} className="btn-ghost !py-2 !px-3 text-sm">
+            ↺ Reset
+          </button>
+        </div>
       </div>
 
       {/* Victory banner */}
@@ -369,17 +650,45 @@ function GameboardInner({ profile }) {
         </div>
         {!won && !anyCapturableNow && (
           <p className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-            No asset is large enough yet — scroll the timeline forward until one
-            appreciates past a target.
+            No asset is large enough yet — scroll the timeline forward, or take
+            out a loan from Powerups below.
           </p>
         )}
       </div>
+
+      {/* Powerups */}
+      <section className="card">
+        <h3 className="font-display font-bold text-lg">Powerups</h3>
+        <p className="text-xs text-ink-500 mt-0.5">
+          Out of moves? Spend a powerup to shift the board.
+        </p>
+        <div className="mt-3">
+          <button
+            onClick={() => setShowLoanModal(true)}
+            className="flex items-start gap-3 w-full sm:w-96 rounded-2xl border-2
+                       border-amber-300 bg-gradient-to-br from-amber-50 to-white p-3
+                       text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+          >
+            <span className="text-2xl leading-none">💵</span>
+            <span>
+              <span className="block text-sm font-bold">Take out a loan</span>
+              <span className="block text-xs text-ink-500 mt-0.5">
+                Adds loan cash to your assets and an equal debt to your
+                liabilities — net worth stays flat. Spend the cash on a goal,
+                then pay the debt off later.
+              </span>
+            </span>
+          </button>
+        </div>
+      </section>
 
       {/* Asset tiles — the draggable pieces */}
       <section className="card">
         <h3 className="font-display font-bold text-lg">Your assets</h3>
         <p className="text-xs text-ink-500 mt-0.5">
-          Drag an asset onto a debt or goal to capture it. The asset shrinks by what it takes.
+          Drag an asset onto a debt or goal to capture it. The asset shrinks by
+          what it takes. Real estate funds goals by borrowing against the
+          property — the house keeps its value and the mortgage grows.
         </p>
         <div
           className="mt-4 flex flex-wrap gap-3 rounded-2xl p-3
@@ -423,7 +732,7 @@ function GameboardInner({ profile }) {
                 tile={tile}
                 value={targetValueAt(tile, month)}
                 state={state}
-                gap={targetValueAt(tile, month) - strongestAssetVal}
+                gap={targetValueAt(tile, month) - strongestFor(tile)}
                 droppable={droppable}
                 onDragEnter={() => droppable && setHoverId(tile.id)}
                 onDragLeave={() => setHoverId((h) => (h === tile.id ? null : h))}
@@ -434,6 +743,70 @@ function GameboardInner({ profile }) {
           })}
         </div>
       </section>
+
+      {/* Action plan — every move becomes a real-life step */}
+      <section className="card">
+        <div className="flex items-baseline justify-between gap-2">
+          <div>
+            <h3 className="font-display font-bold text-lg">Your action plan</h3>
+            <p className="text-xs text-ink-500 mt-0.5">
+              Every move on the board becomes a step. Check them off as you take
+              them in real life.
+            </p>
+          </div>
+          {actions.length > 0 && (
+            <p className="text-xs font-semibold text-ink-500 shrink-0">
+              {actions.filter((a) => a.done).length} / {actions.length} done
+            </p>
+          )}
+        </div>
+        {actions.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center">
+            <p className="text-sm text-ink-400">
+              No moves yet. Capture a target, edit contributions, or use a
+              powerup — your strategy will appear here.
+            </p>
+          </div>
+        ) : (
+          <ol className="mt-4 space-y-2">
+            {actions.map((a, i) => (
+              <ActionStep
+                key={a.id}
+                step={a}
+                index={i + 1}
+                onToggle={() => toggleAction(a.id)}
+                onRemove={() => removeAction(a.id)}
+              />
+            ))}
+          </ol>
+        )}
+      </section>
+
+      {showContributions && (
+        <ContributionsModal
+          assetTiles={assetTiles}
+          targetTiles={targetTiles}
+          onClose={() => setShowContributions(false)}
+          onSave={handleSaveContributions}
+        />
+      )}
+
+      {showLoanModal && (
+        <LoanModal
+          assets={assetTiles.map((a) => ({
+            id: a.id,
+            icon: a.icon,
+            label: a.label,
+            subtype: a.subtype,
+            value: assetValueAt(a, month),
+          }))}
+          goals={remaining
+            .filter((t) => t.kind === 'goal')
+            .map((t) => ({ id: t.id, icon: t.icon, label: t.label, value: t.baseValue }))}
+          onClose={() => setShowLoanModal(false)}
+          onCreate={handleAddLoan}
+        />
+      )}
     </div>
   )
 }
@@ -453,6 +826,12 @@ function Header() {
 
 // ── Asset tile — a draggable piece ────────────────────────────────────
 function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
+  // Loan cash is tinted amber so it's traceable to its matching debt tile.
+  const tone = tile.isLoan
+    ? { border: 'border-amber-300', from: 'from-amber-50',
+        chip: 'bg-amber-100 text-amber-700', val: 'text-amber-700', label: 'Loan cash' }
+    : { border: 'border-brand-300', from: 'from-brand-50',
+        chip: 'bg-brand-100 text-brand-700', val: 'text-brand-700', label: 'Asset' }
   return (
     <div
       draggable
@@ -465,20 +844,23 @@ function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
       onDragEnd={onDragEnd}
       className={`relative w-40 h-40 shrink-0 rounded-2xl border-2 p-3 flex flex-col
                   cursor-grab active:cursor-grabbing select-none transition
-                  border-brand-300 bg-gradient-to-br from-brand-50 to-white
+                  ${tone.border} bg-gradient-to-br ${tone.from} to-white
                   ${dragging ? 'opacity-40 scale-95' : 'hover:-translate-y-1 hover:shadow-soft'}`}
     >
       <div className="flex items-center justify-between">
         <span className="text-2xl leading-none">{tile.icon}</span>
-        <span className="chip bg-brand-100 text-brand-700">Asset</span>
+        <span className={`chip ${tone.chip}`}>{tone.label}</span>
       </div>
       <p className="mt-1.5 text-sm font-semibold leading-tight line-clamp-2">{tile.label}</p>
       <div className="mt-auto">
-        <p className="font-display text-xl font-extrabold text-brand-700">{fmtMoney(value)}</p>
+        <p className={`font-display text-xl font-extrabold ${tone.val}`}>{fmtMoney(value)}</p>
         <p className="text-[11px] text-ink-400">
           {tile.rate > 0 ? `${tile.rate}% / yr` : 'flat'}
           {tile.pmt > 0 ? ` · +${fmtMoney(tile.pmt)}/mo` : ''}
         </p>
+        {tile.subtype === 'realEstate' && (
+          <p className="text-[10px] font-semibold text-amber-600">🏠 Goals via mortgage</p>
+        )}
       </div>
       <span className="absolute bottom-2 right-2.5 text-ink-300 text-xs select-none">⠿</span>
     </div>
@@ -491,9 +873,11 @@ function TargetTile({
   onDragEnter, onDragLeave, onDragOver, onDrop,
 }) {
   const isGoal = tile.kind === 'goal'
-  const accent = isGoal
-    ? { border: 'border-grape-300', bg: 'from-grape-50', text: 'text-grape-700', chip: 'bg-grape-100 text-grape-700' }
-    : { border: 'border-red-300',   bg: 'from-red-50',   text: 'text-red-600',   chip: 'bg-red-100 text-red-700' }
+  const accent = tile.isLoan
+    ? { border: 'border-amber-300', bg: 'from-amber-50',  text: 'text-amber-700', chip: 'bg-amber-100 text-amber-700' }
+    : isGoal
+    ? { border: 'border-grape-300', bg: 'from-grape-50',  text: 'text-grape-700', chip: 'bg-grape-100 text-grape-700' }
+    : { border: 'border-red-300',   bg: 'from-red-50',    text: 'text-red-600',   chip: 'bg-red-100 text-red-700' }
 
   // State-driven styling layered on top of the accent colours.
   let stateClass = `${accent.border} bg-gradient-to-br ${accent.bg} to-white`
@@ -519,7 +903,7 @@ function TargetTile({
       <div className="flex items-center justify-between">
         <span className="text-2xl leading-none">{tile.icon}</span>
         <span className={`chip ${state === 'captured' ? 'bg-brand-100 text-brand-700' : accent.chip}`}>
-          {isGoal ? 'Goal' : 'Debt'}
+          {tile.isLoan ? 'Loan' : isGoal ? 'Goal' : 'Debt'}
         </span>
       </div>
       <p className="mt-1.5 text-sm font-semibold leading-tight line-clamp-2">{tile.label}</p>
@@ -530,6 +914,11 @@ function TargetTile({
           <p className="text-[11px] text-ink-400">
             {fmtMoney(tile.capturedValue)} · {fmtTimeline(tile.capturedMonth)}
           </p>
+          {tile.capturedVia === 'mortgage' && (
+            <p className="mt-0.5 text-[10px] font-semibold text-amber-600">
+              🏠 Added to mortgage
+            </p>
+          )}
         </div>
       ) : (
         <div className="mt-auto">
@@ -551,6 +940,371 @@ function TargetTile({
           <span className="text-4xl opacity-20">✓</span>
         </span>
       )}
+    </div>
+  )
+}
+
+// ── Contributions modal — edit each piece's monthly contribution ──────
+function ContributionsModal({ assetTiles, targetTiles, onClose, onSave }) {
+  const liabilityTiles = targetTiles.filter(
+    (t) => t.kind === 'liability' && !t.captured,
+  )
+
+  const [draft, setDraft] = useState(() => {
+    const m = {}
+    assetTiles.forEach((a) => { m[a.id] = a.pmt ? String(a.pmt) : '' })
+    liabilityTiles.forEach((l) => { m[l.id] = l.pmt ? String(l.pmt) : '' })
+    return m
+  })
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const setVal = (id, v) => setDraft((d) => ({ ...d, [id]: v }))
+
+  const save = () => {
+    const out = {}
+    Object.entries(draft).forEach(([id, v]) => {
+      const n = Number(v)
+      out[id] = Number.isFinite(n) && n >= 0 ? n : 0
+    })
+    onSave(out)
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center
+                 bg-ink-900/50 backdrop-blur-sm p-0 sm:p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-soft
+                      p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6
+                      max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="font-display text-xl font-extrabold">Monthly contributions</h2>
+            <p className="text-sm text-ink-500 mt-0.5">
+              Tune what flows into each piece every month.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 grid place-items-center rounded-full bg-slate-100 hover:bg-slate-200"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {assetTiles.length > 0 && (
+            <div>
+              <p className="label">Assets — added each month</p>
+              <div className="space-y-2">
+                {assetTiles.map((a) => (
+                  <ContributionRow
+                    key={a.id}
+                    icon={a.icon}
+                    label={a.label}
+                    value={draft[a.id] ?? ''}
+                    onChange={(v) => setVal(a.id, v)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {liabilityTiles.length > 0 && (
+            <div>
+              <p className="label">Liabilities — paid down each month</p>
+              <div className="space-y-2">
+                {liabilityTiles.map((l) => (
+                  <ContributionRow
+                    key={l.id}
+                    icon={l.icon}
+                    label={l.label}
+                    value={draft[l.id] ?? ''}
+                    onChange={(v) => setVal(l.id, v)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {assetTiles.length === 0 && liabilityTiles.length === 0 && (
+            <p className="text-sm text-ink-400">No pieces with contributions to edit.</p>
+          )}
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            Cancel
+          </button>
+          <button type="button" onClick={save} className="btn-primary flex-1">
+            Save contributions
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ContributionRow({ icon, label, value, onChange }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xl shrink-0">{icon}</span>
+      <span className="flex-1 text-sm font-semibold truncate">{label}</span>
+      <div className="relative w-32 shrink-0">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 text-sm">$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="1"
+          className="input !py-2 pl-7 pr-10 text-sm"
+          placeholder="0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs">/mo</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Action step — one checklist row in the action plan ───────────────
+function ActionStep({ step, index, onToggle, onRemove }) {
+  const tone = step.kind === 'mortgage' || step.kind === 'loan'
+    ? 'border-amber-200 bg-amber-50/40'
+    : step.kind === 'contribution'
+    ? 'border-grape-200 bg-grape-50/40'
+    : 'border-brand-200 bg-brand-50/40'
+
+  return (
+    <li>
+      <div
+        className={`flex items-start gap-3 rounded-2xl border p-3 transition ${
+          step.done
+            ? 'border-slate-200 bg-slate-50 opacity-70'
+            : tone
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={step.done}
+          onChange={onToggle}
+          className="mt-1 h-5 w-5 rounded accent-grape-600 shrink-0 cursor-pointer"
+          aria-label={`Mark step ${index} done`}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg leading-none shrink-0" aria-hidden="true">
+              {step.emoji}
+            </span>
+            <p className={`text-sm font-semibold flex-1 leading-snug ${
+              step.done ? 'line-through text-ink-400' : ''
+            }`}>
+              {step.title}
+            </p>
+            <span className={`chip shrink-0 ${
+              step.done ? 'bg-slate-100 text-ink-400' : 'bg-white border border-slate-200 text-ink-500'
+            }`}>
+              {fmtTimeline(step.month)}
+            </span>
+          </div>
+          {step.detail && (
+            <p className={`text-xs mt-1 ${
+              step.done ? 'text-ink-300' : 'text-ink-500'
+            }`}>
+              {step.detail}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="shrink-0 h-7 w-7 grid place-items-center rounded-full text-ink-300
+                     hover:text-ink-700 hover:bg-slate-100"
+          aria-label="Remove step"
+          title="Remove step"
+        >
+          ✕
+        </button>
+      </div>
+    </li>
+  )
+}
+
+// ── Loan powerup modal — set up a cash + debt pair ────────────────────
+function LoanModal({ assets = [], goals, onClose, onCreate }) {
+  const [amount, setAmount]       = useState('')
+  const [rate, setRate]           = useState('8')
+  const [label, setLabel]         = useState('')
+  const [depositTo, setDepositTo] = useState('new')
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const amt = Number(amount)
+  const valid = Number.isFinite(amt) && amt > 0
+  const depositAsset = depositTo !== 'new'
+    ? assets.find((a) => a.id === depositTo) || null
+    : null
+  // Real estate can't be liquidated to clear debts — warn if the user picks
+  // it so the consequence is obvious before they commit.
+  const depositIsRealEstate = depositAsset?.subtype === 'realEstate'
+
+  const create = () => {
+    if (!valid) return
+    onCreate({ amount: amt, rate: Number(rate) || 0, label, depositTo })
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center
+                 bg-ink-900/50 backdrop-blur-sm p-0 sm:p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-soft
+                      p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6
+                      max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="font-display text-xl font-extrabold">Take out a loan</h2>
+            <p className="text-sm text-ink-500 mt-0.5">
+              Adds matching cash and debt tiles — your net worth doesn't move.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 grid place-items-center rounded-full bg-slate-100 hover:bg-slate-200"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="label" htmlFor="loan-name">
+              Name <span className="text-ink-400 font-normal">(optional)</span>
+            </label>
+            <input
+              id="loan-name"
+              className="input"
+              placeholder="e.g. Renovation loan"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="loan-amount">Loan amount</label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+              <input
+                id="loan-amount"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                className="input pl-8"
+                placeholder="e.g. 20000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="loan-deposit">Deposit cash to</label>
+            <select
+              id="loan-deposit"
+              className="input"
+              value={depositTo}
+              onChange={(e) => setDepositTo(e.target.value)}
+            >
+              <option value="new">💵 New cash tile</option>
+              {assets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.icon} {a.label} — {fmtMoney(a.value)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-ink-400">
+              {depositTo === 'new'
+                ? 'Creates a fresh cash tile you can drag onto a goal or debt.'
+                : `Adds ${valid ? fmtMoney(amt) : 'the loan'} to that asset's balance. The matching debt tile still appears.`}
+            </p>
+            {depositIsRealEstate && (
+              <p className="mt-1.5 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[11px] text-amber-700">
+                🏠 Heads up — real estate can fund goals but can't clear debts.
+                Borrowed cash deposited here can't be used to pay the loan off later.
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="label" htmlFor="loan-rate">Interest rate (APR)</label>
+            <div className="relative">
+              <input
+                id="loan-rate"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.1"
+                className="input pr-9"
+                placeholder="8"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">%</span>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-400">
+              The debt tile grows at this rate as the timeline advances.
+            </p>
+          </div>
+
+          {goals.length > 0 && (
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                Goals you could fund
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {goals.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between text-xs gap-2">
+                    <span className="truncate">{g.icon} {g.label}</span>
+                    <span className="font-semibold shrink-0">{fmtMoney(g.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={create}
+            disabled={!valid}
+            className="btn-primary flex-1"
+          >
+            Take out loan
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
