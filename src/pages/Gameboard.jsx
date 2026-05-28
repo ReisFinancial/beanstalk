@@ -171,6 +171,7 @@ function GameboardInner({ profile }) {
   const [hoverId, setHoverId]       = useState(null)
   const [showContributions, setShowContributions] = useState(false)
   const [showLoanModal, setShowLoanModal]         = useState(false)
+  const [showIncomeModal, setShowIncomeModal]     = useState(false)
 
   // Every meaningful move on the board (capture, contribution change, loan)
   // is logged here so the sandbox plan becomes a real-life checklist.
@@ -304,14 +305,35 @@ function GameboardInner({ profile }) {
         }
       }
 
-      // Standard capture — asset shrinks by what it took.
+      // Standard capture — asset shrinks by what it took. Cashing out a
+      // retirement account for any reason (debt or goal) also triggers a
+      // 20% early-withdrawal tax bill that lands on the board as a new
+      // liability.
+      const isRetirementWithdrawal = asset.subtype === 'retirement'
+      const taxTile = isRetirementWithdrawal
+        ? {
+            id: `tax:${crypto.randomUUID()}`,
+            kind: 'liability',
+            label: `Tax bill (${asset.label})`,
+            icon: '🏛️',
+            subtype: 'overdueBills',
+            isTax: true,
+            baseValue: Math.round(tVal * 0.2),
+            baseMonth: month,
+            rate: 8, // tax debt accrues interest until paid
+            pmt: 0,
+            captured: false,
+          }
+        : null
       return {
         assetTiles: prev.assetTiles.map((a) =>
           a.id === asset.id
             ? { ...a, baseValue: aVal - tVal, baseMonth: month }
             : a,
         ),
-        targetTiles: prev.targetTiles.map((t) => markCaptured(t)),
+        targetTiles: taxTile
+          ? [...prev.targetTiles.map((t) => markCaptured(t)), taxTile]
+          : prev.targetTiles.map((t) => markCaptured(t)),
       }
     })
 
@@ -363,6 +385,16 @@ function GameboardInner({ profile }) {
           detail: `At ${fmtTimeline(month)} on the timeline.`,
           month,
         })
+        if (asset.subtype === 'retirement') {
+          const taxAmount = Math.round(tVal * 0.2)
+          addActions({
+            kind: 'tax',
+            emoji: '🏛️',
+            title: `Set aside ${fmtMoney(taxAmount)} for the early-withdrawal tax`,
+            detail: `20% of the ${fmtMoney(tVal)} pulled from ${asset.label} — owed at tax time.`,
+            month,
+          })
+        }
       }
     }
 
@@ -507,6 +539,76 @@ function GameboardInner({ profile }) {
       month,
     })
 
+    setFloorMonth(month)
+  }
+
+  // ── Powerup: increase employment income ─────────────────────────────
+  // The user adds extra after-tax monthly income, then allocates that
+  // fresh cashflow across existing assets and uncaptured liabilities.
+  // The modal enforces total allocations ≤ added income, so the user
+  // can't deploy more than they've earned.
+  const handleAddIncome = ({ addedIncome, allocations }) => {
+    const incomeAmt = Math.round(Number(addedIncome)) || 0
+    const allocs = allocations || {}
+    if (incomeAmt <= 0) return
+
+    const changes = []
+    assetTiles.forEach((a) => {
+      const extra = Number(allocs[a.id]) || 0
+      if (extra > 0) {
+        changes.push({ kind: 'asset', tile: a, oldPmt: a.pmt, newPmt: a.pmt + extra, extra })
+      }
+    })
+    targetTiles.forEach((t) => {
+      if (t.kind !== 'liability' || t.captured) return
+      const extra = Number(allocs[t.id]) || 0
+      if (extra > 0) {
+        changes.push({ kind: 'liability', tile: t, oldPmt: t.pmt, newPmt: t.pmt + extra, extra })
+      }
+    })
+
+    setBoard((prev) => ({
+      assetTiles: prev.assetTiles.map((a) => {
+        const extra = Number(allocs[a.id]) || 0
+        if (extra <= 0) return a
+        return {
+          ...a,
+          baseValue: assetValueAt(a, month),
+          baseMonth: month,
+          pmt: a.pmt + extra,
+        }
+      }),
+      targetTiles: prev.targetTiles.map((t) => {
+        if (t.kind !== 'liability' || t.captured) return t
+        const extra = Number(allocs[t.id]) || 0
+        if (extra <= 0) return t
+        return {
+          ...t,
+          baseValue: targetValueAt(t, month),
+          baseMonth: month,
+          pmt: t.pmt + extra,
+        }
+      }),
+    }))
+
+    addActions(
+      {
+        kind: 'income',
+        emoji: '💼',
+        title: `Earn ${fmtMoney(incomeAmt)}/mo more after-tax`,
+        detail: `Negotiate a raise, take on side income, or change roles to free up this cashflow.`,
+        month,
+      },
+      ...changes.map((c) => ({
+        kind: 'contribution',
+        emoji: c.tile.icon,
+        title: c.kind === 'asset'
+          ? `Add ${fmtMoney(c.extra)}/mo to ${c.tile.label}`
+          : `Add ${fmtMoney(c.extra)}/mo paydown on ${c.tile.label}`,
+        detail: `New total: ${fmtMoney(c.newPmt)}/mo · starting at ${fmtTimeline(month)}.`,
+        month,
+      })),
+    )
     setFloorMonth(month)
   }
 
@@ -662,10 +764,10 @@ function GameboardInner({ profile }) {
         <p className="text-xs text-ink-500 mt-0.5">
           Out of moves? Spend a powerup to shift the board.
         </p>
-        <div className="mt-3">
+        <div className="mt-3 grid sm:grid-cols-2 gap-3">
           <button
             onClick={() => setShowLoanModal(true)}
-            className="flex items-start gap-3 w-full sm:w-96 rounded-2xl border-2
+            className="flex items-start gap-3 w-full rounded-2xl border-2
                        border-amber-300 bg-gradient-to-br from-amber-50 to-white p-3
                        text-left transition hover:-translate-y-0.5 hover:shadow-soft"
           >
@@ -679,6 +781,21 @@ function GameboardInner({ profile }) {
               </span>
             </span>
           </button>
+          <button
+            onClick={() => setShowIncomeModal(true)}
+            className="flex items-start gap-3 w-full rounded-2xl border-2
+                       border-brand-300 bg-gradient-to-br from-brand-50 to-white p-3
+                       text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+          >
+            <span className="text-2xl leading-none">💼</span>
+            <span>
+              <span className="block text-sm font-bold">Increase income</span>
+              <span className="block text-xs text-ink-500 mt-0.5">
+                Raise, side hustle, or new role — assign extra after-tax monthly
+                income to any contribution or paydown.
+              </span>
+            </span>
+          </button>
         </div>
       </section>
 
@@ -688,7 +805,8 @@ function GameboardInner({ profile }) {
         <p className="text-xs text-ink-500 mt-0.5">
           Drag an asset onto a debt or goal to capture it. The asset shrinks by
           what it takes. Real estate funds goals by borrowing against the
-          property — the house keeps its value and the mortgage grows.
+          property — the house keeps its value and the mortgage grows. Tapping
+          retirement for anything also drops a 20% tax bill on the board.
         </p>
         <div
           className="mt-4 flex flex-wrap gap-3 rounded-2xl p-3
@@ -791,6 +909,15 @@ function GameboardInner({ profile }) {
         />
       )}
 
+      {showIncomeModal && (
+        <IncomeModal
+          assetTiles={assetTiles}
+          liabilityTiles={targetTiles.filter((t) => t.kind === 'liability' && !t.captured)}
+          onClose={() => setShowIncomeModal(false)}
+          onSave={handleAddIncome}
+        />
+      )}
+
       {showLoanModal && (
         <LoanModal
           assets={assetTiles.map((a) => ({
@@ -861,6 +988,9 @@ function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
         {tile.subtype === 'realEstate' && (
           <p className="text-[10px] font-semibold text-amber-600">🏠 Goals via mortgage</p>
         )}
+        {tile.subtype === 'retirement' && (
+          <p className="text-[10px] font-semibold text-amber-600">🏖️ +20% withdrawal tax</p>
+        )}
       </div>
       <span className="absolute bottom-2 right-2.5 text-ink-300 text-xs select-none">⠿</span>
     </div>
@@ -875,6 +1005,8 @@ function TargetTile({
   const isGoal = tile.kind === 'goal'
   const accent = tile.isLoan
     ? { border: 'border-amber-300', bg: 'from-amber-50',  text: 'text-amber-700', chip: 'bg-amber-100 text-amber-700' }
+    : tile.isTax
+    ? { border: 'border-amber-500', bg: 'from-amber-100', text: 'text-amber-800', chip: 'bg-amber-200 text-amber-800' }
     : isGoal
     ? { border: 'border-grape-300', bg: 'from-grape-50',  text: 'text-grape-700', chip: 'bg-grape-100 text-grape-700' }
     : { border: 'border-red-300',   bg: 'from-red-50',    text: 'text-red-600',   chip: 'bg-red-100 text-red-700' }
@@ -903,7 +1035,7 @@ function TargetTile({
       <div className="flex items-center justify-between">
         <span className="text-2xl leading-none">{tile.icon}</span>
         <span className={`chip ${state === 'captured' ? 'bg-brand-100 text-brand-700' : accent.chip}`}>
-          {tile.isLoan ? 'Loan' : isGoal ? 'Goal' : 'Debt'}
+          {tile.isLoan ? 'Loan' : tile.isTax ? 'Tax' : isGoal ? 'Goal' : 'Debt'}
         </span>
       </div>
       <p className="mt-1.5 text-sm font-semibold leading-tight line-clamp-2">{tile.label}</p>
@@ -1079,7 +1211,7 @@ function ContributionRow({ icon, label, value, onChange }) {
 
 // ── Action step — one checklist row in the action plan ───────────────
 function ActionStep({ step, index, onToggle, onRemove }) {
-  const tone = step.kind === 'mortgage' || step.kind === 'loan'
+  const tone = step.kind === 'mortgage' || step.kind === 'loan' || step.kind === 'tax'
     ? 'border-amber-200 bg-amber-50/40'
     : step.kind === 'contribution'
     ? 'border-grape-200 bg-grape-50/40'
@@ -1137,6 +1269,207 @@ function ActionStep({ step, index, onToggle, onRemove }) {
         </button>
       </div>
     </li>
+  )
+}
+
+// ── Income powerup modal — earn more, then allocate the extra cashflow
+function IncomeModal({ assetTiles, liabilityTiles, onClose, onSave }) {
+  const [addedIncome, setAddedIncome] = useState('')
+  const [allocations, setAllocations] = useState({})
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const setAlloc = (id, v) => setAllocations((a) => ({ ...a, [id]: v }))
+
+  const incomeAmt = Number(addedIncome) || 0
+  const allocSum = Object.values(allocations).reduce(
+    (s, v) => s + (Number(v) || 0), 0,
+  )
+  const remaining = incomeAmt - allocSum
+  const overAllocated = allocSum > incomeAmt
+  const valid = incomeAmt > 0 && allocSum > 0 && !overAllocated
+
+  // The board already knows how much the user is moving every month. Show it
+  // for context so the new income feels like an addition, not a reset.
+  const currentTotal =
+    assetTiles.reduce((s, a) => s + (Number(a.pmt) || 0), 0) +
+    liabilityTiles.reduce((s, t) => s + (Number(t.pmt) || 0), 0)
+
+  const save = () => {
+    if (!valid) return
+    const clean = {}
+    Object.entries(allocations).forEach(([id, v]) => {
+      const n = Number(v)
+      if (Number.isFinite(n) && n > 0) clean[id] = n
+    })
+    onSave({ addedIncome: incomeAmt, allocations: clean })
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center
+                 bg-ink-900/50 backdrop-blur-sm p-0 sm:p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-soft
+                      p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6
+                      max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="font-display text-xl font-extrabold">Increase income</h2>
+            <p className="text-sm text-ink-500 mt-0.5">
+              Earn more, then funnel the new cashflow into your pieces.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 grid place-items-center rounded-full bg-slate-100 hover:bg-slate-200"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="label" htmlFor="income-amount">
+              How much more after-tax monthly income are you adding?
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+              <input
+                id="income-amount"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                className="input pl-8 pr-12"
+                placeholder="e.g. 500"
+                value={addedIncome}
+                onChange={(e) => setAddedIncome(e.target.value)}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">/mo</span>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-400">
+              You're already moving {fmtMoney(currentTotal)}/mo through your
+              pieces. We'll add the gross-up math for taxes in a later update.
+            </p>
+          </div>
+
+          {incomeAmt > 0 && (assetTiles.length > 0 || liabilityTiles.length > 0) ? (
+            <div>
+              <div className="flex items-baseline justify-between">
+                <p className="label !mb-1">Where does the new income go?</p>
+                <p className={`text-xs font-semibold shrink-0 ${
+                  overAllocated ? 'text-red-600' : remaining === 0 ? 'text-brand-700' : 'text-ink-500'
+                }`}>
+                  {overAllocated
+                    ? `Over by ${fmtMoney(-remaining)}`
+                    : remaining === 0
+                      ? 'Fully assigned'
+                      : `${fmtMoney(remaining)} left`}
+                </p>
+              </div>
+              <p className="text-[11px] text-ink-400 mb-2">
+                You can't assign more than the income you added.
+              </p>
+              {assetTiles.length > 0 && (
+                <>
+                  <p className="text-[11px] uppercase tracking-wide font-semibold text-ink-400 mt-2">
+                    Assets
+                  </p>
+                  <div className="mt-1 space-y-2">
+                    {assetTiles.map((a) => (
+                      <AllocationRow
+                        key={a.id}
+                        icon={a.icon}
+                        label={a.label}
+                        current={a.pmt}
+                        value={allocations[a.id] ?? ''}
+                        onChange={(v) => setAlloc(a.id, v)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              {liabilityTiles.length > 0 && (
+                <>
+                  <p className="text-[11px] uppercase tracking-wide font-semibold text-ink-400 mt-3">
+                    Liabilities
+                  </p>
+                  <div className="mt-1 space-y-2">
+                    {liabilityTiles.map((l) => (
+                      <AllocationRow
+                        key={l.id}
+                        icon={l.icon}
+                        label={l.label}
+                        current={l.pmt}
+                        value={allocations[l.id] ?? ''}
+                        onChange={(v) => setAlloc(l.id, v)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : incomeAmt > 0 ? (
+            <p className="text-sm text-ink-400">
+              No assets or open liabilities to allocate to yet.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!valid}
+            className="btn-primary flex-1"
+          >
+            Add income
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AllocationRow({ icon, label, current, value, onChange }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xl shrink-0">{icon}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-semibold truncate">{label}</span>
+        <span className="block text-[11px] text-ink-400">
+          Now: {fmtMoney(Number(current) || 0)}/mo
+        </span>
+      </span>
+      <div className="relative w-32 shrink-0">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 text-sm">+$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="1"
+          className="input !py-2 pl-9 pr-10 text-sm"
+          placeholder="0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs">/mo</span>
+      </div>
+    </div>
   )
 }
 
