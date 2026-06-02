@@ -21,6 +21,7 @@ function inferSubtype(type, label) {
     if (/retire|rrsp|401|pension/.test(s))           return 'retirement'
     if (/real estate|property|home equity|house/.test(s)) return 'realEstate'
     if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
+    if (/\bcar\b|\bauto\b|vehicle|truck|motorcycle/.test(s)) return 'vehicle'
     return 'investments'
   }
   if (/credit card|visa|master|amex/.test(s))        return 'creditCard'
@@ -46,11 +47,19 @@ function annualRatePct(type, item, rates) {
  *   monthly rate (r/12) to match the payment cadence.
  * - For liabilities, payments subtract from the balance and we floor at $0
  *   so the hex doesn't go negative once the loan is paid off.
+ * - Vehicles depreciate 40% per year and floor at 10% of the original
+ *   value — the standard appreciation math doesn't apply.
  */
-function futureValue(type, pv, ratePct, years, pmt = 0) {
+function futureValue(type, pv, ratePct, years, pmt = 0, subtype = null) {
   const principal = Number(pv) || 0
   const payment   = Number(pmt) || 0
   if (years <= 0) return principal
+
+  // Vehicles depreciate, regardless of any rate that may have been set.
+  if (type === 'asset' && subtype === 'vehicle') {
+    const depreciated = principal * Math.pow(0.6, years)
+    return Math.max(depreciated, principal * 0.1)
+  }
 
   const rAnnual  = (Number(ratePct) || 0) / 100
   const rMonthly = rAnnual / 12
@@ -712,6 +721,7 @@ function SnapshotView({
         annualRatePct('asset', a, rates),
         years,
         a.monthlyPayment,
+        a.subtype || inferSubtype('asset', a.label),
       ),
     })),
     [assets, rates, years],

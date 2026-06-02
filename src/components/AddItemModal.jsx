@@ -29,6 +29,7 @@ const ASSET_SUBTYPES = [
   { id: 'investments', label: 'Investments' },
   { id: 'realEstate',  label: 'Real estate' },
   { id: 'crypto',      label: 'Crypto' },
+  { id: 'vehicle',     label: 'Vehicle / car' },
 ]
 const LIABILITY_SUBTYPES = [
   { id: 'creditCard',   label: 'Credit card' },

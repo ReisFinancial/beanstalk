@@ -21,7 +21,7 @@ const MAX_MONTHS = 360 // 30-year horizon
 
 const ASSET_ICON = {
   savings: '🏦', retirement: '🏖️', investments: '📈',
-  realEstate: '🏠', crypto: '🪙',
+  realEstate: '🏠', crypto: '🪙', vehicle: '🚗',
 }
 const LIABILITY_ICON = {
   creditCard: '💳', lineOfCredit: '🧾', overdueBills: '⏰',
@@ -42,6 +42,7 @@ function inferSubtype(type, label) {
     if (/retire|rrsp|401|pension/.test(s))           return 'retirement'
     if (/real estate|property|home equity|house/.test(s)) return 'realEstate'
     if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
+    if (/\bcar\b|\bauto\b|vehicle|truck|motorcycle/.test(s)) return 'vehicle'
     return 'investments'
   }
   if (/credit card|visa|master|amex/.test(s))        return 'creditCard'
@@ -59,9 +60,19 @@ function annualRatePct(type, item, rates) {
 
 // Compound a value forward `months` months. `pmt` is an end-of-month
 // annuity (a contribution for assets, a paydown for liabilities).
-function compound(value, annualPct, months, pmt, isLiability) {
+// Vehicles depreciate 40%/yr and floor at 10% of the originally entered
+// value; the standard appreciation math doesn't apply to them.
+function compound(value, annualPct, months, pmt, isLiability, subtype, originalValue) {
   const v = Number(value) || 0
   if (months <= 0) return v
+  if (!isLiability && subtype === 'vehicle') {
+    const orig = Number(originalValue) || v
+    const floor = orig * 0.1
+    if (v <= floor) return v // already at/below the floor — stop decaying
+    const years = months / 12
+    const depreciated = v * Math.pow(0.6, years)
+    return Math.max(depreciated, floor)
+  }
   const r = (Number(annualPct) || 0) / 100 / 12
   const p = Number(pmt) || 0
   const fvPrincipal = v * Math.pow(1 + r, months)
@@ -96,7 +107,10 @@ function goalValue(g) {
 
 // Project a tile's worth at a given timeline month.
 function assetValueAt(tile, month) {
-  return compound(tile.baseValue, tile.rate, month - tile.baseMonth, tile.pmt, false)
+  return compound(
+    tile.baseValue, tile.rate, month - tile.baseMonth, tile.pmt, false,
+    tile.subtype, tile.originalValue,
+  )
 }
 function targetValueAt(tile, month) {
   if (tile.kind === 'goal') return tile.baseValue // goals don't appreciate
@@ -108,12 +122,14 @@ function buildBoard(profile) {
   const rates = profile?.rates
   const assetTiles = (profile?.assets || []).map((a) => {
     const subtype = a.subtype || inferSubtype('asset', a.label)
+    const amount  = Number(a.amount) || 0
     return {
       id: `asset:${a.id}`,
       label: a.label || 'Asset',
       icon: ASSET_ICON[subtype] || '💰',
       subtype,
-      baseValue: Number(a.amount) || 0,
+      baseValue: amount,
+      originalValue: amount, // anchor for the vehicle depreciation floor
       baseMonth: 0,
       rate: annualRatePct('asset', a, rates),
       pmt: Number(a.monthlyPayment) || 0,
@@ -799,68 +815,73 @@ function GameboardInner({ profile }) {
         </div>
       </section>
 
-      {/* Asset tiles — the draggable pieces */}
-      <section className="card">
-        <h3 className="font-display font-bold text-lg">Your assets</h3>
-        <p className="text-xs text-ink-500 mt-0.5">
-          Drag an asset onto a debt or goal to capture it. The asset shrinks by
-          what it takes. Real estate funds goals by borrowing against the
-          property — the house keeps its value and the mortgage grows. Tapping
-          retirement for anything also drops a 20% tax bill on the board.
-        </p>
-        <div
-          className="mt-4 flex flex-wrap gap-3 rounded-2xl p-3
-                     bg-[radial-gradient(circle,_rgba(13,27,42,0.05)_1px,_transparent_1px)]
-                     [background-size:16px_16px]"
-        >
-          {assetTiles.map((tile) => (
-            <AssetTile
-              key={tile.id}
-              tile={tile}
-              value={assetValueAt(tile, month)}
-              dragging={draggingId === tile.id}
-              onDragStart={() => setDraggingId(tile.id)}
-              onDragEnd={() => { setDraggingId(null); setHoverId(null) }}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* Target tiles — debts & goals to clear */}
-      <section className="card">
-        <h3 className="font-display font-bold text-lg">Debts &amp; goals</h3>
-        <p className="text-xs text-ink-500 mt-0.5">
-          Drop an asset here. Green tiles are within reach; dim tiles need a bigger asset.
-        </p>
-        <div
-          className="mt-4 flex flex-wrap gap-3 rounded-2xl p-3
-                     bg-[radial-gradient(circle,_rgba(13,27,42,0.05)_1px,_transparent_1px)]
-                     [background-size:16px_16px]"
-        >
-          {targetTiles.map((tile) => {
-            const droppable = canCapture(tile)
-            let state = 'idle'
-            if (tile.captured) state = 'captured'
-            else if (draggingAsset && hoverId === tile.id && droppable) state = 'hover'
-            else if (draggingAsset && droppable) state = 'droppable'
-            else if (draggingAsset) state = 'blocked'
-            return (
-              <TargetTile
+      {/* Asset tiles + Targets — side-by-side on tablet+ so drags are short */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Asset tiles — the draggable pieces */}
+        <section className="card flex flex-col">
+          <h3 className="font-display font-bold text-lg">Your assets</h3>
+          <p className="text-xs text-ink-500 mt-0.5">
+            Drag an asset onto a debt or goal to capture it. The asset shrinks
+            by what it takes. Real estate funds goals by borrowing against the
+            property — the house keeps its value and the mortgage grows.
+            Tapping retirement for anything also drops a 20% tax bill on the
+            board.
+          </p>
+          <div
+            className="mt-4 flex-1 flex flex-wrap content-start gap-3 rounded-2xl p-3
+                       bg-[radial-gradient(circle,_rgba(13,27,42,0.05)_1px,_transparent_1px)]
+                       [background-size:16px_16px]"
+          >
+            {assetTiles.map((tile) => (
+              <AssetTile
                 key={tile.id}
                 tile={tile}
-                value={targetValueAt(tile, month)}
-                state={state}
-                gap={targetValueAt(tile, month) - strongestFor(tile)}
-                droppable={droppable}
-                onDragEnter={() => droppable && setHoverId(tile.id)}
-                onDragLeave={() => setHoverId((h) => (h === tile.id ? null : h))}
-                onDragOver={(e) => { if (droppable) e.preventDefault() }}
-                onDrop={(e) => { e.preventDefault(); handleCapture(tile.id) }}
+                value={assetValueAt(tile, month)}
+                dragging={draggingId === tile.id}
+                onDragStart={() => setDraggingId(tile.id)}
+                onDragEnd={() => { setDraggingId(null); setHoverId(null) }}
               />
-            )
-          })}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+
+        {/* Target tiles — debts & goals to clear */}
+        <section className="card flex flex-col">
+          <h3 className="font-display font-bold text-lg">Debts &amp; goals</h3>
+          <p className="text-xs text-ink-500 mt-0.5">
+            Drop an asset here. Green tiles are within reach; dim tiles need a
+            bigger asset.
+          </p>
+          <div
+            className="mt-4 flex-1 flex flex-wrap content-start gap-3 rounded-2xl p-3
+                       bg-[radial-gradient(circle,_rgba(13,27,42,0.05)_1px,_transparent_1px)]
+                       [background-size:16px_16px]"
+          >
+            {targetTiles.map((tile) => {
+              const droppable = canCapture(tile)
+              let state = 'idle'
+              if (tile.captured) state = 'captured'
+              else if (draggingAsset && hoverId === tile.id && droppable) state = 'hover'
+              else if (draggingAsset && droppable) state = 'droppable'
+              else if (draggingAsset) state = 'blocked'
+              return (
+                <TargetTile
+                  key={tile.id}
+                  tile={tile}
+                  value={targetValueAt(tile, month)}
+                  state={state}
+                  gap={targetValueAt(tile, month) - strongestFor(tile)}
+                  droppable={droppable}
+                  onDragEnter={() => droppable && setHoverId(tile.id)}
+                  onDragLeave={() => setHoverId((h) => (h === tile.id ? null : h))}
+                  onDragOver={(e) => { if (droppable) e.preventDefault() }}
+                  onDrop={(e) => { e.preventDefault(); handleCapture(tile.id) }}
+                />
+              )
+            })}
+          </div>
+        </section>
+      </div>
 
       {/* Action plan — every move becomes a real-life step */}
       <section className="card">
@@ -982,14 +1003,19 @@ function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
       <div className="mt-auto">
         <p className={`font-display text-xl font-extrabold ${tone.val}`}>{fmtMoney(value)}</p>
         <p className="text-[11px] text-ink-400">
-          {tile.rate > 0 ? `${tile.rate}% / yr` : 'flat'}
-          {tile.pmt > 0 ? ` · +${fmtMoney(tile.pmt)}/mo` : ''}
+          {tile.subtype === 'vehicle'
+            ? '-40% / yr (floors at 10%)'
+            : tile.rate > 0 ? `${tile.rate}% / yr` : 'flat'}
+          {tile.subtype !== 'vehicle' && tile.pmt > 0 ? ` · +${fmtMoney(tile.pmt)}/mo` : ''}
         </p>
         {tile.subtype === 'realEstate' && (
           <p className="text-[10px] font-semibold text-amber-600">🏠 Goals via mortgage</p>
         )}
         {tile.subtype === 'retirement' && (
           <p className="text-[10px] font-semibold text-amber-600">🏖️ +20% withdrawal tax</p>
+        )}
+        {tile.subtype === 'vehicle' && (
+          <p className="text-[10px] font-semibold text-amber-600">🚗 Depreciating asset</p>
         )}
       </div>
       <span className="absolute bottom-2 right-2.5 text-ink-300 text-xs select-none">⠿</span>
