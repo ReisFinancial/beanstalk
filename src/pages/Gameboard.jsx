@@ -136,17 +136,21 @@ function buildBoard(profile) {
       pmt: Number(a.monthlyPayment) || 0,
     }
   })
-  const liabilityTiles = (profile?.liabilities || []).map((l) => ({
-    id: `liability:${l.id}`,
-    kind: 'liability',
-    label: l.label || 'Liability',
-    icon: LIABILITY_ICON[l.subtype] || '🔻',
-    baseValue: Number(l.amount) || 0,
-    baseMonth: 0,
-    rate: annualRatePct('liability', l, rates),
-    pmt: Number(l.monthlyPayment) || 0,
-    captured: false,
-  }))
+  const liabilityTiles = (profile?.liabilities || []).map((l) => {
+    const subtype = l.subtype || inferSubtype('liability', l.label)
+    return {
+      id: `liability:${l.id}`,
+      kind: 'liability',
+      label: l.label || 'Liability',
+      icon: LIABILITY_ICON[subtype] || '🔻',
+      subtype, // needed so capture rules (carLoan, mortgage) can match
+      baseValue: Number(l.amount) || 0,
+      baseMonth: 0,
+      rate: annualRatePct('liability', l, rates),
+      pmt: Number(l.monthlyPayment) || 0,
+      captured: false,
+    }
+  })
   const goalTiles = (profile?.goals || []).map((g) => ({
     id: `goal:${g.id}`,
     kind: 'goal',
@@ -227,8 +231,16 @@ function GameboardInner({ profile }) {
   const strongestNonRE = nonRealEstate.length
     ? Math.max(...nonRealEstate.map((x) => x.val))
     : 0
-  const strongestFor = (target) =>
-    target.kind === 'liability' ? strongestNonRE : strongestAny
+  // For a car loan, also exclude vehicles — a car can't clear its own loan.
+  const strongestNonRENonVehicle = nonRealEstate.filter((x) => x.subtype !== 'vehicle')
+  const strongestForCarLoan = strongestNonRENonVehicle.length
+    ? Math.max(...strongestNonRENonVehicle.map((x) => x.val))
+    : 0
+  const strongestFor = (target) => {
+    if (target.kind !== 'liability') return strongestAny
+    if (target.subtype === 'carLoan')  return strongestForCarLoan
+    return strongestNonRE
+  }
   const anyCapturableNow = remaining.some(
     (t) => targetValueAt(t, month) <= strongestFor(t),
   )
@@ -246,6 +258,14 @@ function GameboardInner({ profile }) {
     if (draggingAsset.subtype === 'realEstate' && target.kind === 'liability') {
       return false
     }
+    // Rule: a vehicle can't be used to clear out its car loan.
+    if (
+      draggingAsset.subtype === 'vehicle' &&
+      target.kind === 'liability' &&
+      target.subtype === 'carLoan'
+    ) {
+      return false
+    }
     return assetValueAt(draggingAsset, month) >= targetValueAt(target, month)
   }
 
@@ -260,6 +280,12 @@ function GameboardInner({ profile }) {
       if (!asset || !target || target.captured) return prev
       // Rule: real estate can't be liquidated to wipe out a debt.
       if (asset.subtype === 'realEstate' && target.kind === 'liability') return prev
+      // Rule: a vehicle can't be used to clear out its car loan.
+      if (
+        asset.subtype === 'vehicle' &&
+        target.kind === 'liability' &&
+        target.subtype === 'carLoan'
+      ) return prev
       const aVal = assetValueAt(asset, month)
       const tVal = targetValueAt(target, month)
       if (aVal < tVal) return prev // not enough — reject
@@ -1031,7 +1057,7 @@ function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
           <p className="text-[10px] font-semibold text-amber-600">🏖️ +20% withdrawal tax</p>
         )}
         {tile.subtype === 'vehicle' && (
-          <p className="text-[10px] font-semibold text-amber-600">🚗 Depreciating asset</p>
+          <p className="text-[10px] font-semibold text-amber-600">🚗 Depreciates · skips car loan</p>
         )}
       </div>
       <span className="absolute bottom-2 right-2.5 text-ink-300 text-xs select-none">⠿</span>
