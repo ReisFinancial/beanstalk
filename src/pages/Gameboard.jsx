@@ -185,15 +185,22 @@ export default function Gameboard() {
 }
 
 function GameboardInner({ profile }) {
+  const { updateSection } = usePlanner()
   const [board, setBoard]           = useState(() => buildBoard(profile))
   const [month, setMonth]           = useState(0)
   const [floorMonth, setFloorMonth] = useState(0) // time only moves forward
   const [draggingId, setDraggingId] = useState(null)
   const [hoverId, setHoverId]       = useState(null)
   const [showContributions, setShowContributions] = useState(false)
+  const [showIncome, setShowIncome]               = useState(false)
   const [showPortrait, setShowPortrait]           = useState(false)
   const [showLoanModal, setShowLoanModal]         = useState(false)
   const [showIncomeModal, setShowIncomeModal]     = useState(false)
+
+  // Running total of after-tax monthly income added via the "Increase
+  // income" powerup. Folds into the Income modal's left-over equation so
+  // the user can see how powerups affect their budget.
+  const [addedIncome, setAddedIncome] = useState(0)
 
   // Every meaningful move on the board (capture, contribution change, loan)
   // is logged here so the sandbox plan becomes a real-life checklist.
@@ -251,6 +258,77 @@ function GameboardInner({ profile }) {
     .filter((t) => t.kind === 'liability' && !t.captured)
     .reduce((s, t) => s + targetValueAt(t, month), 0)
   const netWorth = liveAssets - liveDebt
+
+  // ── Shared cashflow + portrait math ─────────────────────────────────
+  // monthlyContributions is the sum of every asset's contribution and
+  // every uncaptured liability's paydown — what the user is currently
+  // moving each month. Reused by the Income modal and Portrait.
+  const monthlyContributions =
+    assetTiles.reduce((s, a) => s + (Number(a.pmt) || 0), 0) +
+    targetTiles
+      .filter((t) => t.kind === 'liability' && !t.captured)
+      .reduce((s, t) => s + (Number(t.pmt) || 0), 0)
+
+  // Liquid pool feeds Protection; interest-bearing pool feeds Passive Income.
+  const liquidValue = assetTiles
+    .filter((a) => a.subtype === 'savings' || a.subtype === 'investments' || a.subtype === 'crypto')
+    .reduce((s, a) => s + assetValueAt(a, month), 0)
+  const passiveIncome = assetTiles
+    .filter((a) =>
+      a.subtype === 'savings' || a.subtype === 'investments' ||
+      a.subtype === 'crypto'  || a.subtype === 'retirement',
+    )
+    .reduce((s, a) => s + assetValueAt(a, month) * ((Number(a.rate) || 0) / 100), 0)
+
+  // Foundation = 10 years of income + the full estate value (assets).
+  const monthlyIncomeAfterTax = Number(profile.finances?.monthlyIncome) || 0
+  const foundationAmount = monthlyIncomeAfterTax * 12 * 10 + liveAssets
+
+  // Countdown = years until the next wealth band, projected linearly off
+  // current annual growth (returns + contributions − liability interest).
+  const annualLiabilityInterest = targetTiles
+    .filter((t) => t.kind === 'liability' && !t.captured)
+    .reduce((s, t) => s + targetValueAt(t, month) * ((Number(t.rate) || 0) / 100), 0)
+  const annualGrowth = passiveIncome + monthlyContributions * 12 - annualLiabilityInterest
+
+  // ── Auto-capture: timeline-paid-down liabilities ─────────────────────
+  // If a contribution has driven a liability's balance to zero (or below)
+  // at the current month, mark it cleared just as if the user had dragged
+  // an asset onto it. Idempotent: once captured, the filter is empty so
+  // the effect's setBoard/setActions calls are skipped on the next pass.
+  useEffect(() => {
+    const cleared = targetTiles.filter(
+      (t) => t.kind === 'liability' && !t.captured && targetValueAt(t, month) <= 0,
+    )
+    if (cleared.length === 0) return
+    setBoard((prev) => ({
+      ...prev,
+      targetTiles: prev.targetTiles.map((t) => {
+        if (t.kind !== 'liability' || t.captured) return t
+        if (targetValueAt(t, month) > 0) return t
+        return {
+          ...t,
+          captured: true,
+          capturedBy: 'timeline',
+          capturedValue: 0,
+          capturedMonth: month,
+          capturedVia: 'paydown',
+        }
+      }),
+    }))
+    setActions((prev) => [
+      ...prev,
+      ...cleared.map((t) => ({
+        id: crypto.randomUUID(),
+        done: false,
+        kind: 'capture',
+        emoji: t.icon,
+        title: `Finish paying off ${t.label}`,
+        detail: `Driven to zero by ${fmtTimeline(month)} via monthly contributions.`,
+        month,
+      })),
+    ])
+  }, [month, targetTiles])
 
   const canCapture = (target) => {
     if (!draggingAsset || target.captured) return false
@@ -351,33 +429,56 @@ function GameboardInner({ profile }) {
 
       // Standard capture — asset shrinks by what it took. Cashing out a
       // retirement account for any reason (debt or goal) also triggers a
-      // 20% early-withdrawal tax bill that lands on the board as a new
-      // liability.
+      // 20% early-withdrawal tax bill. If a tax tile already exists, the
+      // new amount stacks onto it so the board doesn't fill with
+      // duplicate tax liabilities each time RRSP money is withdrawn.
       const isRetirementWithdrawal = asset.subtype === 'retirement'
-      const taxTile = isRetirementWithdrawal
-        ? {
+      const taxAmount = isRetirementWithdrawal ? Math.round(tVal * 0.2) : 0
+      const liveTax = isRetirementWithdrawal
+        ? prev.targetTiles.find(
+            (t) => t.kind === 'liability' && !t.captured && t.isTax,
+          )
+        : null
+
+      let nextTargets = prev.targetTiles.map((t) => {
+        if (t.id === target.id) return markCaptured(t)
+        if (liveTax && t.id === liveTax.id) {
+          // Re-anchor the running tax balance to today, then add the new
+          // 20% slice. The tile keeps accruing interest from here forward.
+          const currentTaxVal = targetValueAt(t, month)
+          return { ...t, baseValue: currentTaxVal + taxAmount, baseMonth: month }
+        }
+        return t
+      })
+
+      if (isRetirementWithdrawal && !liveTax) {
+        // No tax tile yet — spin one up with a generic label so it can
+        // accumulate withdrawals from any RRSP/retirement account.
+        nextTargets = [
+          ...nextTargets,
+          {
             id: `tax:${crypto.randomUUID()}`,
             kind: 'liability',
-            label: `Tax bill (${asset.label})`,
+            label: 'Early-withdrawal tax',
             icon: '🏛️',
             subtype: 'overdueBills',
             isTax: true,
-            baseValue: Math.round(tVal * 0.2),
+            baseValue: taxAmount,
             baseMonth: month,
             rate: 8, // tax debt accrues interest until paid
             pmt: 0,
             captured: false,
-          }
-        : null
+          },
+        ]
+      }
+
       return {
         assetTiles: prev.assetTiles.map((a) =>
           a.id === asset.id
             ? { ...a, baseValue: aVal - tVal, baseMonth: month }
             : a,
         ),
-        targetTiles: taxTile
-          ? [...prev.targetTiles.map((t) => markCaptured(t)), taxTile]
-          : prev.targetTiles.map((t) => markCaptured(t)),
+        targetTiles: nextTargets,
       }
     })
 
@@ -431,10 +532,16 @@ function GameboardInner({ profile }) {
         })
         if (asset.subtype === 'retirement') {
           const taxAmount = Math.round(tVal * 0.2)
+          // Was there already a tax tile before this capture fired?
+          const hadExistingTax = targetTiles.some(
+            (t) => t.kind === 'liability' && !t.captured && t.isTax,
+          )
           addActions({
             kind: 'tax',
             emoji: '🏛️',
-            title: `Set aside ${fmtMoney(taxAmount)} for the early-withdrawal tax`,
+            title: hadExistingTax
+              ? `Add ${fmtMoney(taxAmount)} to your early-withdrawal tax`
+              : `Set aside ${fmtMoney(taxAmount)} for the early-withdrawal tax`,
             detail: `20% of the ${fmtMoney(tVal)} pulled from ${asset.label} — owed at tax time.`,
             month,
           })
@@ -454,6 +561,7 @@ function GameboardInner({ profile }) {
     setDraggingId(null)
     setHoverId(null)
     setActions([])
+    setAddedIncome(0)
   }
 
   // Apply edited monthly contributions. Each touched tile is re-anchored
@@ -635,6 +743,7 @@ function GameboardInner({ profile }) {
       }),
     }))
 
+    setAddedIncome((prev) => prev + incomeAmt)
     addActions(
       {
         kind: 'income',
@@ -699,6 +808,12 @@ function GameboardInner({ profile }) {
             className="btn-secondary !py-2 !px-3 text-sm"
           >
             ✎ Contributions
+          </button>
+          <button
+            onClick={() => setShowIncome(true)}
+            className="btn-secondary !py-2 !px-3 text-sm"
+          >
+            💰 Income
           </button>
           <button
             onClick={() => setShowPortrait(true)}
@@ -964,10 +1079,25 @@ function GameboardInner({ profile }) {
         />
       )}
 
+      {showIncome && (
+        <IncomeDisclosureModal
+          currentValue={profile.finances?.monthlyIncome}
+          addedIncome={addedIncome}
+          allocations={monthlyContributions}
+          onClose={() => setShowIncome(false)}
+          onSave={(v) => updateSection('finances', { monthlyIncome: v })}
+        />
+      )}
+
       {showPortrait && (
         <PortraitModal
           netWorth={netWorth}
           month={month}
+          liquidValue={liquidValue}
+          passiveIncome={passiveIncome}
+          monthlyIncomeAfterTax={monthlyIncomeAfterTax}
+          foundationAmount={foundationAmount}
+          annualGrowth={annualGrowth}
           onClose={() => setShowPortrait(false)}
         />
       )}
@@ -1112,11 +1242,18 @@ function TargetTile({
         <div className="mt-auto">
           <p className="font-display text-lg font-extrabold text-brand-700">✓ Cleared</p>
           <p className="text-[11px] text-ink-400">
-            {fmtMoney(tile.capturedValue)} · {fmtTimeline(tile.capturedMonth)}
+            {tile.capturedVia === 'paydown'
+              ? `Paid down · ${fmtTimeline(tile.capturedMonth)}`
+              : `${fmtMoney(tile.capturedValue)} · ${fmtTimeline(tile.capturedMonth)}`}
           </p>
           {tile.capturedVia === 'mortgage' && (
             <p className="mt-0.5 text-[10px] font-semibold text-amber-600">
               🏠 Added to mortgage
+            </p>
+          )}
+          {tile.capturedVia === 'paydown' && (
+            <p className="mt-0.5 text-[10px] font-semibold text-brand-600">
+              💪 Paid via contributions
             </p>
           )}
         </div>
@@ -1340,12 +1477,163 @@ function ActionStep({ step, index, onToggle, onRemove }) {
   )
 }
 
+// ── Income disclosure modal — set baseline after-tax monthly income ──
+// The value persists to the planner profile so other parts of the app
+// (Portrait vectors, future budget caps) can read a single source of
+// truth instead of re-deriving income from contribution sums.
+function IncomeDisclosureModal({ currentValue, addedIncome = 0, allocations, onClose, onSave }) {
+  const [value, setValue] = useState(currentValue || '')
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const incomeAmt   = Number(value) || 0
+  const added       = Number(addedIncome) || 0
+  const totalIncome = incomeAmt + added
+  const allocated   = Number(allocations) || 0
+  const remaining   = totalIncome - allocated
+  const overAllocated = totalIncome > 0 && allocated > totalIncome
+
+  const save = () => {
+    // Empty input clears the disclosure; a number persists as a string for
+    // controlled-input consistency with the rest of the wizard.
+    onSave(value === '' ? '' : String(Math.max(0, Math.round(Number(value) || 0))))
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center
+                 bg-ink-900/50 backdrop-blur-sm p-0 sm:p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-soft
+                      p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6
+                      max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="font-display text-xl font-extrabold">Monthly income</h2>
+            <p className="text-sm text-ink-500 mt-0.5">
+              {currentValue
+                ? 'Starting from what you disclosed on the Money page — edit if it has changed.'
+                : 'Disclose what you actually take home each month after tax.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 grid place-items-center rounded-full bg-slate-100 hover:bg-slate-200"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="label" htmlFor="atx-income">After-tax monthly income</label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+              <input
+                id="atx-income"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                className="input pl-8 pr-12"
+                placeholder="e.g. 5000"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                autoFocus
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">/mo</span>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-400">
+              Take-home pay after income tax, CPP/EI, pension, and other
+              automatic deductions.
+            </p>
+          </div>
+
+          {totalIncome > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                Where it's going
+              </p>
+              <div className="mt-2 space-y-1.5 text-sm">
+                <Row label="Income" value={fmtMoney(incomeAmt)} bold />
+                {added > 0 && (
+                  <Row
+                    label="Added income (powerup)"
+                    value={`+ ${fmtMoney(added)}`}
+                    tone="good"
+                  />
+                )}
+                <Row label="Going to contributions" value={`− ${fmtMoney(allocated)}`} />
+                <div className="border-t border-slate-200 my-1" />
+                <Row
+                  label={overAllocated ? 'Over budget' : 'Left over'}
+                  value={fmtMoney(remaining)}
+                  bold
+                  tone={overAllocated ? 'bad' : remaining > 0 ? 'good' : 'default'}
+                />
+              </div>
+              {overAllocated && (
+                <p className="mt-2 text-[11px] text-red-600">
+                  Your current contributions exceed the income you have available.
+                  Trim them in the Contributions modal, raise your income, or take
+                  another income powerup.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            Cancel
+          </button>
+          <button type="button" onClick={save} className="btn-primary flex-1">
+            Save income
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, value, bold = false, tone = 'default' }) {
+  const toneClass =
+    tone === 'good' ? 'text-brand-700'
+    : tone === 'bad' ? 'text-red-600'
+    : 'text-ink-700'
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className={`text-xs ${bold ? 'font-bold uppercase tracking-wide text-ink-500' : 'text-ink-500'}`}>
+        {label}
+      </span>
+      <span className={`${bold ? 'font-display text-sm font-extrabold' : 'text-sm font-semibold'} ${toneClass}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
 // ── Portrait modal — a live read on the health of the plan ────────────
 // The center circle uses the Snapshot's WealthMark / WEALTH_LEVELS so the
 // two screens speak the same language. The six surrounding containers
 // hold "vector" feedback attributes — placeholders for now, real metrics
 // can be slotted in later without changing the layout.
-function PortraitModal({ netWorth, month, onClose }) {
+function PortraitModal({
+  netWorth, month,
+  liquidValue = 0, passiveIncome = 0, monthlyIncomeAfterTax = 0,
+  foundationAmount = 0, annualGrowth = 0,
+  onClose,
+}) {
   const lvl  = wealthLevel(netWorth)
   const meta = WEALTH_LEVELS[lvl] || WEALTH_LEVELS[0]
 
@@ -1355,29 +1643,82 @@ function PortraitModal({ netWorth, month, onClose }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // ── Vector values ───────────────────────────────────────────────────
+  // Upper bound of each wealth band — the user reaches the next level by
+  // crossing past these. Last entry is the entry into the top tier.
+  const WEALTH_THRESHOLDS = [1000, 10000, 100000, 500000, 4000000]
+  const nextThreshold = lvl < 5 ? WEALTH_THRESHOLDS[lvl] : null
+
+  // Protection: liquid investments ÷ monthly income = months of income
+  // your liquid pool could replace if your earnings stopped.
+  let protectionLabel
+  let protectionDetail
+  if (monthlyIncomeAfterTax <= 0) {
+    protectionLabel = '—'
+    protectionDetail = 'Disclose your monthly income to see runway.'
+  } else if (liquidValue <= 0) {
+    protectionLabel = '0 mo'
+    protectionDetail = `No liquid pool to cover your ${fmtMoney(monthlyIncomeAfterTax)}/mo income.`
+  } else {
+    const months = liquidValue / monthlyIncomeAfterTax
+    if (months < 1) {
+      protectionLabel = '< 1 mo'
+    } else if (months < 48) {
+      protectionLabel = `${Math.round(months)} mo`
+    } else {
+      // Beyond 48 months, switch the unit so the chip stays readable.
+      const years = months / 12
+      if (years < 10)        protectionLabel = `${years.toFixed(1)} yr`
+      else if (years < 100)  protectionLabel = `${Math.round(years)} yr`
+      else                   protectionLabel = '99+ yr'
+    }
+    protectionDetail = `${fmtMoney(liquidValue)} liquid ÷ ${fmtMoney(monthlyIncomeAfterTax)}/mo income.`
+  }
+
+  // Countdown: gap to the next threshold ÷ annual growth.
+  let countdownLabel
+  let countdownDetail = 'Years until the next wealth level at the current growth rate.'
+  if (nextThreshold == null) {
+    countdownLabel = 'Max'
+    countdownDetail = "You're already at the top wealth level."
+  } else if (annualGrowth <= 0 || !Number.isFinite(annualGrowth)) {
+    countdownLabel = '—'
+    countdownDetail = 'No clear path to the next level at the current growth rate.'
+  } else {
+    const gap = nextThreshold - netWorth
+    if (gap <= 0) {
+      countdownLabel = 'Now'
+      countdownDetail = "You've crossed the threshold — your level updates next render."
+    } else {
+      const years = gap / annualGrowth
+      if (years < 0.1)      countdownLabel = '< 1 mo'
+      else if (years < 1)   countdownLabel = `${Math.round(years * 12)} mo`
+      else if (years < 10)  countdownLabel = `${years.toFixed(1)} yr`
+      else if (years < 100) countdownLabel = `${Math.round(years)} yr`
+      else                  countdownLabel = '99+ yr'
+    }
+  }
+
   // Six surrounding "vector" attributes. Ordered clockwise from the top.
-  // The actual metric calculations will be wired in once the formulas are
-  // decided — for now each card shows its name, a placeholder value, and
-  // a short description of what it will measure.
   const attributes = [
     { id: 'protection', emoji: '🛡️', label: 'Protection',
-      value: '— mo',
-      detail: 'Months of runway your liquid savings cover at current contributions.' },
+      value: protectionLabel,
+      detail: protectionDetail },
     { id: 'passive', emoji: '💸', label: 'Passive Income',
-      value: '—/yr',
-      detail: 'Annual income generated by your investments.' },
+      value: `${fmtMoney(passiveIncome)}/yr`,
+      detail: 'Annual interest earned on savings, investments, retirement, and crypto.' },
     { id: 'generational', emoji: '🌳', label: 'Generational Wealth',
-      value: '—',
-      detail: 'Net worth passed on to the next generation.' },
+      value: fmtMoney(netWorth),
+      detail: `Net worth at ${fmtTimeline(month)}.` },
     { id: 'foundation', emoji: '🧱', label: 'Foundation',
-      value: '—',
-      detail: 'Total insurance needed to protect the estate.' },
+      value: fmtMoney(foundationAmount),
+      detail: '10 years of income + the total estate value.' },
     { id: 'risk', emoji: '⚠️', label: 'Risk Exposure',
       value: '—',
       detail: 'How exposed the plan is to a downturn.' },
     { id: 'countdown', emoji: '⏱️', label: 'Countdown',
-      value: '— yr',
-      detail: 'Years until the next wealth level is reached.' },
+      value: countdownLabel,
+      detail: countdownDetail },
   ]
 
   return (
