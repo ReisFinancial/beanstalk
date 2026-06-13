@@ -260,14 +260,16 @@ function GameboardInner({ profile }) {
   const netWorth = liveAssets - liveDebt
 
   // ── Shared cashflow + portrait math ─────────────────────────────────
-  // monthlyContributions is the sum of every asset's contribution and
-  // every uncaptured liability's paydown — what the user is currently
-  // moving each month. Reused by the Income modal and Portrait.
-  const monthlyContributions =
-    assetTiles.reduce((s, a) => s + (Number(a.pmt) || 0), 0) +
-    targetTiles
-      .filter((t) => t.kind === 'liability' && !t.captured)
-      .reduce((s, t) => s + (Number(t.pmt) || 0), 0)
+  // Two breakdowns of cash flowing out each month — assets (contributions
+  // into savings/investments/etc.) and liabilities (debt paydowns). They
+  // sum into monthlyContributions, reused by the Portrait math.
+  const assetContributions = assetTiles.reduce(
+    (s, a) => s + (Number(a.pmt) || 0), 0,
+  )
+  const liabilityPayments = targetTiles
+    .filter((t) => t.kind === 'liability' && !t.captured)
+    .reduce((s, t) => s + (Number(t.pmt) || 0), 0)
+  const monthlyContributions = assetContributions + liabilityPayments
 
   // Liquid pool feeds Protection; interest-bearing pool feeds Passive Income.
   const liquidValue = assetTiles
@@ -1083,7 +1085,8 @@ function GameboardInner({ profile }) {
         <IncomeDisclosureModal
           currentValue={profile.finances?.monthlyIncome}
           addedIncome={addedIncome}
-          allocations={monthlyContributions}
+          assetContributions={assetContributions}
+          liabilityPayments={liabilityPayments}
           onClose={() => setShowIncome(false)}
           onSave={(v) => updateSection('finances', { monthlyIncome: v })}
         />
@@ -1294,6 +1297,13 @@ function ContributionsModal({ assetTiles, targetTiles, onClose, onSave }) {
     return m
   })
 
+  // Tab between asset contributions and liability paydowns so the user
+  // can focus on one side at a time when there are a lot of tiles.
+  // Default to whichever side has rows to edit.
+  const [view, setView] = useState(
+    assetTiles.length === 0 && liabilityTiles.length > 0 ? 'liabilities' : 'assets',
+  )
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -1340,41 +1350,85 @@ function ContributionsModal({ assetTiles, targetTiles, onClose, onSave }) {
           </button>
         </div>
 
-        <div className="mt-5 space-y-4">
-          {assetTiles.length > 0 && (
-            <div>
-              <p className="label">Assets — added each month</p>
-              <div className="space-y-2">
-                {assetTiles.map((a) => (
-                  <ContributionRow
-                    key={a.id}
-                    icon={a.icon}
-                    label={a.label}
-                    value={draft[a.id] ?? ''}
-                    onChange={(v) => setVal(a.id, v)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {liabilityTiles.length > 0 && (
-            <div>
-              <p className="label">Liabilities — paid down each month</p>
-              <div className="space-y-2">
-                {liabilityTiles.map((l) => (
-                  <ContributionRow
-                    key={l.id}
-                    icon={l.icon}
-                    label={l.label}
-                    value={draft[l.id] ?? ''}
-                    onChange={(v) => setVal(l.id, v)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {assetTiles.length === 0 && liabilityTiles.length === 0 && (
-            <p className="text-sm text-ink-400">No pieces with contributions to edit.</p>
+        {/* Segmented toggle */}
+        <div className="mt-5 flex gap-1 p-1 bg-slate-100 rounded-full">
+          <button
+            type="button"
+            onClick={() => setView('assets')}
+            className={`flex-1 py-1.5 rounded-full text-sm font-semibold transition ${
+              view === 'assets'
+                ? 'bg-white shadow-soft text-ink-900'
+                : 'text-ink-500 hover:text-ink-700'
+            }`}
+          >
+            🟢 Assets
+            <span className={`ml-1.5 text-[11px] font-bold ${
+              view === 'assets' ? 'text-brand-700' : 'text-ink-400'
+            }`}>
+              {assetTiles.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('liabilities')}
+            className={`flex-1 py-1.5 rounded-full text-sm font-semibold transition ${
+              view === 'liabilities'
+                ? 'bg-white shadow-soft text-ink-900'
+                : 'text-ink-500 hover:text-ink-700'
+            }`}
+          >
+            🔻 Liabilities
+            <span className={`ml-1.5 text-[11px] font-bold ${
+              view === 'liabilities' ? 'text-red-700' : 'text-ink-400'
+            }`}>
+              {liabilityTiles.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {view === 'assets' ? (
+            assetTiles.length > 0 ? (
+              <>
+                <p className="text-[11px] uppercase tracking-wide font-semibold text-ink-400 mb-2">
+                  Added each month
+                </p>
+                <div className="space-y-2">
+                  {assetTiles.map((a) => (
+                    <ContributionRow
+                      key={a.id}
+                      icon={a.icon}
+                      label={a.label}
+                      value={draft[a.id] ?? ''}
+                      onChange={(v) => setVal(a.id, v)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-400">No assets to tune.</p>
+            )
+          ) : (
+            liabilityTiles.length > 0 ? (
+              <>
+                <p className="text-[11px] uppercase tracking-wide font-semibold text-ink-400 mb-2">
+                  Paid down each month
+                </p>
+                <div className="space-y-2">
+                  {liabilityTiles.map((l) => (
+                    <ContributionRow
+                      key={l.id}
+                      icon={l.icon}
+                      label={l.label}
+                      value={draft[l.id] ?? ''}
+                      onChange={(v) => setVal(l.id, v)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-400">No open liabilities to tune.</p>
+            )
           )}
         </div>
 
@@ -1481,7 +1535,11 @@ function ActionStep({ step, index, onToggle, onRemove }) {
 // The value persists to the planner profile so other parts of the app
 // (Portrait vectors, future budget caps) can read a single source of
 // truth instead of re-deriving income from contribution sums.
-function IncomeDisclosureModal({ currentValue, addedIncome = 0, allocations, onClose, onSave }) {
+function IncomeDisclosureModal({
+  currentValue, addedIncome = 0,
+  assetContributions = 0, liabilityPayments = 0,
+  onClose, onSave,
+}) {
   const [value, setValue] = useState(currentValue || '')
 
   useEffect(() => {
@@ -1493,7 +1551,9 @@ function IncomeDisclosureModal({ currentValue, addedIncome = 0, allocations, onC
   const incomeAmt   = Number(value) || 0
   const added       = Number(addedIncome) || 0
   const totalIncome = incomeAmt + added
-  const allocated   = Number(allocations) || 0
+  const assets      = Number(assetContributions) || 0
+  const liabilities = Number(liabilityPayments)  || 0
+  const allocated   = assets + liabilities
   const remaining   = totalIncome - allocated
   const overAllocated = totalIncome > 0 && allocated > totalIncome
 
@@ -1573,7 +1633,8 @@ function IncomeDisclosureModal({ currentValue, addedIncome = 0, allocations, onC
                     tone="good"
                   />
                 )}
-                <Row label="Going to contributions" value={`− ${fmtMoney(allocated)}`} />
+                <Row label="Going to asset contributions" value={`− ${fmtMoney(assets)}`} />
+                <Row label="Going to debt payments"       value={`− ${fmtMoney(liabilities)}`} />
                 <div className="border-t border-slate-200 my-1" />
                 <Row
                   label={overAllocated ? 'Over budget' : 'Left over'}
