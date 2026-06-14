@@ -156,6 +156,8 @@ function buildBoard(profile) {
     kind: 'goal',
     label: g.title || 'Goal',
     icon: GOAL_ICON[g.category] || '🎯',
+    category: g.category,       // drives milestone vs purchase behaviour
+    liabilityId: g.liabilityId, // debt-category goals borrow their value from this linked liability
     baseValue: goalValue(g),
     baseMonth: 0,
     rate: 0,
@@ -293,34 +295,91 @@ function GameboardInner({ profile }) {
     .reduce((s, t) => s + targetValueAt(t, month) * ((Number(t.rate) || 0) / 100), 0)
   const annualGrowth = passiveIncome + monthlyContributions * 12 - annualLiabilityInterest
 
-  // ── Auto-capture: timeline-paid-down liabilities ─────────────────────
-  // If a contribution has driven a liability's balance to zero (or below)
-  // at the current month, mark it cleared just as if the user had dragged
-  // an asset onto it. Idempotent: once captured, the filter is empty so
-  // the effect's setBoard/setActions calls are skipped on the next pass.
+  // ── Auto-capture: liabilities paid down + investment-target milestones ─
+  // Two timeline triggers fire here:
+  //  1. Any uncaptured liability whose balance has reached zero at this
+  //     month is marked paid off (via monthly contributions).
+  //  2. Any uncaptured investment-target goal whose target value is
+  //     covered by the user's investment pool (investments + retirement +
+  //     crypto) at this month is marked reached (a milestone, not a
+  //     purchase — assets aren't consumed).
+  // The effect is idempotent: once captured, the matching filters return
+  // empty on the next pass.
   useEffect(() => {
-    const cleared = targetTiles.filter(
+    const investmentPool = assetTiles
+      .filter((a) =>
+        a.subtype === 'investments' || a.subtype === 'retirement' || a.subtype === 'crypto',
+      )
+      .reduce((s, a) => s + assetValueAt(a, month), 0)
+
+    const debtsCleared = targetTiles.filter(
       (t) => t.kind === 'liability' && !t.captured && targetValueAt(t, month) <= 0,
     )
-    if (cleared.length === 0) return
+    const goalsReached = targetTiles.filter(
+      (t) => t.kind === 'goal' && !t.captured &&
+        t.category === 'investment' && investmentPool >= t.baseValue,
+    )
+    // Debt-clearing goals fire the moment their linked liability is
+    // captured (paydown, drag, or anything else).
+    const debtGoalsReached = targetTiles.filter((t) => {
+      if (t.kind !== 'goal' || t.captured) return false
+      if (t.category !== 'debt' || !t.liabilityId) return false
+      const linked = targetTiles.find(
+        (tl) => tl.kind === 'liability' && tl.id === `liability:${t.liabilityId}`,
+      )
+      return Boolean(linked && linked.captured)
+    })
+    if (
+      debtsCleared.length === 0 &&
+      goalsReached.length === 0 &&
+      debtGoalsReached.length === 0
+    ) return
+
     setBoard((prev) => ({
       ...prev,
       targetTiles: prev.targetTiles.map((t) => {
-        if (t.kind !== 'liability' || t.captured) return t
-        if (targetValueAt(t, month) > 0) return t
-        return {
-          ...t,
-          captured: true,
-          capturedBy: 'timeline',
-          capturedValue: 0,
-          capturedMonth: month,
-          capturedVia: 'paydown',
+        if (t.captured) return t
+        if (t.kind === 'liability' && targetValueAt(t, month) <= 0) {
+          return {
+            ...t,
+            captured: true,
+            capturedBy: 'timeline',
+            capturedValue: 0,
+            capturedMonth: month,
+            capturedVia: 'paydown',
+          }
         }
+        if (t.kind === 'goal' && t.category === 'investment' && investmentPool >= t.baseValue) {
+          return {
+            ...t,
+            captured: true,
+            capturedBy: 'timeline',
+            capturedValue: t.baseValue,
+            capturedMonth: month,
+            capturedVia: 'milestone',
+          }
+        }
+        if (t.kind === 'goal' && t.category === 'debt' && t.liabilityId) {
+          const linked = targetTiles.find(
+            (tl) => tl.kind === 'liability' && tl.id === `liability:${t.liabilityId}`,
+          )
+          if (linked && linked.captured) {
+            return {
+              ...t,
+              captured: true,
+              capturedBy: 'timeline',
+              capturedValue: linked.capturedValue || 0,
+              capturedMonth: month,
+              capturedVia: 'milestone',
+            }
+          }
+        }
+        return t
       }),
     }))
     setActions((prev) => [
       ...prev,
-      ...cleared.map((t) => ({
+      ...debtsCleared.map((t) => ({
         id: crypto.randomUUID(),
         done: false,
         kind: 'capture',
@@ -329,8 +388,41 @@ function GameboardInner({ profile }) {
         detail: `Driven to zero by ${fmtTimeline(month)} via monthly contributions.`,
         month,
       })),
+      ...goalsReached.map((t) => ({
+        id: crypto.randomUUID(),
+        done: false,
+        kind: 'capture',
+        emoji: t.icon,
+        title: `Reach "${t.label}" investment target`,
+        detail: `Investment pool hit ${fmtMoney(t.baseValue)} by ${fmtTimeline(month)}.`,
+        month,
+      })),
+      ...debtGoalsReached.map((t) => ({
+        id: crypto.randomUUID(),
+        done: false,
+        kind: 'capture',
+        emoji: t.icon,
+        title: `Reach "${t.label}" debt-clearing goal`,
+        detail: `Linked debt cleared by ${fmtTimeline(month)} — goal achieved.`,
+        month,
+      })),
     ])
-  }, [month, targetTiles])
+  }, [month, targetTiles, assetTiles])
+
+  // Debt-category goals don't carry a stand-alone value — their "size" is
+  // the current balance of the liability they're linked to. This helper
+  // gives every target tile a single, render-consistent value to compare
+  // assets against.
+  const effectiveTargetValueAt = (target, m) => {
+    if (target.kind === 'goal' && target.category === 'debt' && target.liabilityId) {
+      const linked = targetTiles.find(
+        (t) => t.kind === 'liability' && t.id === `liability:${target.liabilityId}`,
+      )
+      if (linked && !linked.captured) return targetValueAt(linked, m)
+      return 0
+    }
+    return targetValueAt(target, m)
+  }
 
   const canCapture = (target) => {
     if (!draggingAsset || target.captured) return false
@@ -346,7 +438,7 @@ function GameboardInner({ profile }) {
     ) {
       return false
     }
-    return assetValueAt(draggingAsset, month) >= targetValueAt(target, month)
+    return assetValueAt(draggingAsset, month) >= effectiveTargetValueAt(target, month)
   }
 
   // ── Capture: asset takes the target, then shrinks by its value ──────
@@ -367,7 +459,18 @@ function GameboardInner({ profile }) {
         target.subtype === 'carLoan'
       ) return prev
       const aVal = assetValueAt(asset, month)
-      const tVal = targetValueAt(target, month)
+      // Debt-category goals borrow their value from the linked liability;
+      // every other target uses its own balance.
+      const tVal =
+        target.kind === 'goal' && target.category === 'debt' && target.liabilityId
+          ? (() => {
+              const linked = prev.targetTiles.find(
+                (t) => t.kind === 'liability' && t.id === `liability:${target.liabilityId}`,
+              )
+              if (linked && !linked.captured) return targetValueAt(linked, month)
+              return 0
+            })()
+          : targetValueAt(target, month)
       if (aVal < tVal) return prev // not enough — reject
 
       const markCaptured = (t, extra) =>
@@ -381,6 +484,20 @@ function GameboardInner({ profile }) {
               ...extra,
             }
           : t
+
+      // Investment- and debt-category goals are milestones, not purchases.
+      // Reaching the value is the achievement — no asset is spent, no
+      // mortgage is taken, and retirement triggers no tax bill. The
+      // linked debt (if any) isn't auto-paid here; that's a separate drag.
+      if (
+        target.kind === 'goal' &&
+        (target.category === 'investment' || target.category === 'debt')
+      ) {
+        return {
+          assetTiles: prev.assetTiles,
+          targetTiles: prev.targetTiles.map((t) => markCaptured(t, { capturedVia: 'milestone' })),
+        }
+      }
 
       // Real estate funds a goal via mortgage debt.
       if (asset.subtype === 'realEstate' && target.kind === 'goal') {
@@ -490,7 +607,23 @@ function GameboardInner({ profile }) {
     const target = targetTiles.find((t) => t.id === targetId)
     if (asset && target && !target.captured) {
       const tVal = targetValueAt(target, month)
-      if (asset.subtype === 'realEstate' && target.kind === 'goal') {
+      if (target.kind === 'goal' && target.category === 'investment') {
+        addActions({
+          kind: 'capture',
+          emoji: target.icon,
+          title: `Reach "${target.label}" investment target`,
+          detail: `Milestone hit — ${asset.label} put you at ${fmtMoney(tVal)} by ${fmtTimeline(month)}.`,
+          month,
+        })
+      } else if (target.kind === 'goal' && target.category === 'debt') {
+        addActions({
+          kind: 'capture',
+          emoji: target.icon,
+          title: `Reach "${target.label}" debt-clearing goal`,
+          detail: `Milestone — ${asset.label} is large enough (${fmtMoney(tVal)}) to cover the linked debt at ${fmtTimeline(month)}.`,
+          month,
+        })
+      } else if (asset.subtype === 'realEstate' && target.kind === 'goal') {
         const liveMortgage = targetTiles.find(
           (t) => t.kind === 'liability' && !t.captured && t.subtype === 'mortgage',
         )
@@ -1019,9 +1152,9 @@ function GameboardInner({ profile }) {
                 <TargetTile
                   key={tile.id}
                   tile={tile}
-                  value={targetValueAt(tile, month)}
+                  value={effectiveTargetValueAt(tile, month)}
                   state={state}
-                  gap={targetValueAt(tile, month) - strongestFor(tile)}
+                  gap={effectiveTargetValueAt(tile, month) - strongestFor(tile)}
                   droppable={droppable}
                   onDragEnter={() => droppable && setHoverId(tile.id)}
                   onDragLeave={() => setHoverId((h) => (h === tile.id ? null : h))}
@@ -1083,12 +1216,13 @@ function GameboardInner({ profile }) {
 
       {showIncome && (
         <IncomeDisclosureModal
-          currentValue={profile.finances?.monthlyIncome}
+          currentTotal={profile.finances?.monthlyIncome}
+          currentSources={profile.finances?.incomeSources}
           addedIncome={addedIncome}
           assetContributions={assetContributions}
           liabilityPayments={liabilityPayments}
           onClose={() => setShowIncome(false)}
-          onSave={(v) => updateSection('finances', { monthlyIncome: v })}
+          onSave={(payload) => updateSection('finances', payload)}
         />
       )}
 
@@ -1257,6 +1391,11 @@ function TargetTile({
           {tile.capturedVia === 'paydown' && (
             <p className="mt-0.5 text-[10px] font-semibold text-brand-600">
               💪 Paid via contributions
+            </p>
+          )}
+          {tile.capturedVia === 'milestone' && (
+            <p className="mt-0.5 text-[10px] font-semibold text-brand-600">
+              📈 Milestone reached
             </p>
           )}
         </div>
@@ -1536,11 +1675,29 @@ function ActionStep({ step, index, onToggle, onRemove }) {
 // (Portrait vectors, future budget caps) can read a single source of
 // truth instead of re-deriving income from contribution sums.
 function IncomeDisclosureModal({
-  currentValue, addedIncome = 0,
+  currentTotal, currentSources, addedIncome = 0,
   assetContributions = 0, liabilityPayments = 0,
   onClose, onSave,
 }) {
-  const [value, setValue] = useState(currentValue || '')
+  // Seed the inputs. If we already have a per-source breakdown, use that.
+  // Otherwise migrate any legacy single-field total into Employment so we
+  // don't lose the user's existing disclosure.
+  const seededFromSources =
+    currentSources &&
+    ((currentSources.employment ?? '') !== '' ||
+     (currentSources.selfEmployment ?? '') !== '' ||
+     (currentSources.business ?? '') !== '')
+  const [employment, setEmployment] = useState(
+    seededFromSources
+      ? (currentSources.employment ?? '')
+      : (currentTotal ?? ''),
+  )
+  const [selfEmployment, setSelfEmployment] = useState(
+    seededFromSources ? (currentSources.selfEmployment ?? '') : '',
+  )
+  const [business, setBusiness] = useState(
+    seededFromSources ? (currentSources.business ?? '') : '',
+  )
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -1548,7 +1705,10 @@ function IncomeDisclosureModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const incomeAmt   = Number(value) || 0
+  const emp     = Number(employment)     || 0
+  const selfEmp = Number(selfEmployment) || 0
+  const biz     = Number(business)       || 0
+  const incomeAmt   = emp + selfEmp + biz
   const added       = Number(addedIncome) || 0
   const totalIncome = incomeAmt + added
   const assets      = Number(assetContributions) || 0
@@ -1557,10 +1717,19 @@ function IncomeDisclosureModal({
   const remaining   = totalIncome - allocated
   const overAllocated = totalIncome > 0 && allocated > totalIncome
 
+  // Clamp a raw input to a controlled string in the same convention used
+  // across the rest of the planner profile.
+  const clean = (v) => v === '' ? '' : String(Math.max(0, Math.round(Number(v) || 0)))
+
   const save = () => {
-    // Empty input clears the disclosure; a number persists as a string for
-    // controlled-input consistency with the rest of the wizard.
-    onSave(value === '' ? '' : String(Math.max(0, Math.round(Number(value) || 0))))
+    onSave({
+      monthlyIncome: incomeAmt > 0 ? String(incomeAmt) : '',
+      incomeSources: {
+        employment:     clean(employment),
+        selfEmployment: clean(selfEmployment),
+        business:       clean(business),
+      },
+    })
     onClose()
   }
 
@@ -1579,8 +1748,8 @@ function IncomeDisclosureModal({
           <div>
             <h2 className="font-display text-xl font-extrabold">Monthly income</h2>
             <p className="text-sm text-ink-500 mt-0.5">
-              {currentValue
-                ? 'Starting from what you disclosed on the Money page — edit if it has changed.'
+              {(currentTotal || seededFromSources)
+                ? 'Edit if any of your sources have changed.'
                 : 'Disclose what you actually take home each month after tax.'}
             </p>
           </div>
@@ -1596,26 +1765,40 @@ function IncomeDisclosureModal({
 
         <div className="mt-5 space-y-4">
           <div>
-            <label className="label" htmlFor="atx-income">After-tax monthly income</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
-              <input
-                id="atx-income"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="1"
-                className="input pl-8 pr-12"
-                placeholder="e.g. 5000"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
+            <p className="label">Income sources (after tax)</p>
+            <div className="space-y-2">
+              <IncomeSourceRow
+                id="src-employment"
+                label="Employment"
+                value={employment}
+                onChange={setEmployment}
                 autoFocus
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">/mo</span>
+              <IncomeSourceRow
+                id="src-self-emp"
+                label="Self-employment"
+                value={selfEmployment}
+                onChange={setSelfEmployment}
+              />
+              <IncomeSourceRow
+                id="src-business"
+                label="Business"
+                value={business}
+                onChange={setBusiness}
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2">
+              <span className="text-[11px] uppercase tracking-wide font-semibold text-ink-500">
+                Total monthly income
+              </span>
+              <span className="font-display text-base font-extrabold text-ink-900">
+                {fmtMoney(incomeAmt)}
+              </span>
             </div>
             <p className="mt-1 text-[11px] text-ink-400">
               Take-home pay after income tax, CPP/EI, pension, and other
-              automatic deductions.
+              automatic deductions. We'll add the gross-up math for taxes in
+              a later update.
             </p>
           </div>
 
@@ -1662,6 +1845,32 @@ function IncomeDisclosureModal({
             Save income
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function IncomeSourceRow({ id, label, value, onChange, autoFocus = false }) {
+  return (
+    <div className="flex items-center gap-3">
+      <label htmlFor={id} className="flex-1 text-sm font-semibold truncate">
+        {label}
+      </label>
+      <div className="relative w-36 shrink-0">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 text-sm">$</span>
+        <input
+          id={id}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="1"
+          className="input !py-2 pl-7 pr-10 text-sm"
+          placeholder="0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          autoFocus={autoFocus}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs">/mo</span>
       </div>
     </div>
   )

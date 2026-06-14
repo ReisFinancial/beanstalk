@@ -20,7 +20,12 @@ const emptyProfile = {
   liabilities: [], // { id, label, amount, note? }
   snapshotSeeded: false, // true once we've seeded assets/liabilities from wizard finances
   finances: {
-    monthlyIncome: '', // after-tax take-home (see wizard label)
+    monthlyIncome: '', // after-tax take-home — total, summed from sources
+    incomeSources: {  // per-source breakdown set via the Play page Income modal
+      employment: '',
+      selfEmployment: '',
+      business: '',
+    },
     monthlyExpenses: '',
     bareNecessities: '', // fixed monthly expenditures (rent, utilities, etc.)
     liquidAssets: '',
