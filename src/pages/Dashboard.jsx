@@ -145,6 +145,170 @@ function NextStep({ icon, title, children }) {
   )
 }
 
+// Quick formatter for action-plan timeline tags. Months → "Today" / "X mo" /
+// "X yr" / "X yr Y mo" — matches the gameboard's fmtTimeline output.
+function fmtActionMonths(months) {
+  const m = Number(months) || 0
+  if (m <= 0) return 'Today'
+  const y = Math.floor(m / 12)
+  const r = m % 12
+  if (y === 0) return `${r} mo`
+  if (r === 0) return `${y} yr`
+  return `${y} yr ${r} mo`
+}
+
+// Renders the persistent action plan checklist on the dashboard home.
+// Steps come from gameboard moves and live in profile.actionPlan so they
+// survive navigation. Users can tick items off or dismiss them here, just
+// like in the Play page's own list.
+function ActionPlanCard({ actionPlan, onToggle, onRemove }) {
+  const [showAll, setShowAll] = useState(false)
+  const all = actionPlan || []
+  const unchecked = all.filter((a) => !a.done)
+  const doneCount = all.length - unchecked.length
+
+  if (all.length === 0) {
+    return (
+      <section className="card">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-display text-lg font-bold">Your action plan</h2>
+            <p className="text-sm text-ink-500 mt-0.5">
+              Strategic moves from the Play page show up here so you can act
+              on them in real life.
+            </p>
+          </div>
+          <Link to="/gameboard" className="text-sm font-semibold text-grape-700">
+            Open Play →
+          </Link>
+        </div>
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center">
+          <div className="text-3xl">🎮</div>
+          <p className="text-sm text-ink-400 mt-1">
+            Run a what-if scenario on the Play page to start building your plan.
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  // Default to the next five things to do. Expand to the full list (incl.
+  // completed) when the user clicks "Show all".
+  const visible = showAll ? all : unchecked.slice(0, 5)
+  const hiddenCount = all.length - visible.length
+
+  return (
+    <section className="card">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-display text-lg font-bold">Your action plan</h2>
+          <p className="text-sm text-ink-500 mt-0.5">
+            {doneCount} of {all.length} steps complete.
+          </p>
+        </div>
+        <Link to="/gameboard" className="text-sm font-semibold text-grape-700">
+          Open Play →
+        </Link>
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-brand-200 bg-brand-50/40 px-4 py-6 text-center">
+          <p className="font-display text-base font-extrabold text-brand-700">🎉 All caught up</p>
+          <p className="text-sm text-ink-500 mt-1">
+            Every active step is checked off. Plan another what-if?
+          </p>
+        </div>
+      ) : (
+        <ol className="mt-4 space-y-2">
+          {visible.map((step, i) => (
+            <ActionPlanStep
+              key={step.id}
+              step={step}
+              index={i + 1}
+              onToggle={() => onToggle(step.id)}
+              onRemove={() => onRemove(step.id)}
+            />
+          ))}
+        </ol>
+      )}
+
+      {!showAll && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-3 text-sm font-semibold text-grape-700 hover:text-grape-900"
+        >
+          Show all {all.length} steps
+        </button>
+      )}
+      {showAll && all.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="mt-3 text-sm font-semibold text-grape-700 hover:text-grape-900"
+        >
+          Show only upcoming
+        </button>
+      )}
+    </section>
+  )
+}
+
+function ActionPlanStep({ step, index, onToggle, onRemove }) {
+  const tone = step.kind === 'mortgage' || step.kind === 'loan' || step.kind === 'tax'
+    ? 'border-amber-200 bg-amber-50/40'
+    : step.kind === 'contribution'
+    ? 'border-grape-200 bg-grape-50/40'
+    : 'border-brand-200 bg-brand-50/40'
+  return (
+    <li>
+      <div className={`flex items-start gap-3 rounded-2xl border p-3 transition ${
+        step.done ? 'border-slate-200 bg-slate-50 opacity-70' : tone
+      }`}>
+        <input
+          type="checkbox"
+          checked={Boolean(step.done)}
+          onChange={onToggle}
+          className="mt-1 h-5 w-5 rounded accent-grape-600 shrink-0 cursor-pointer"
+          aria-label={`Mark step ${index} done`}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg leading-none shrink-0" aria-hidden="true">
+              {step.emoji}
+            </span>
+            <p className={`text-sm font-semibold flex-1 leading-snug ${
+              step.done ? 'line-through text-ink-400' : ''
+            }`}>
+              {step.title}
+            </p>
+            <span className={`chip shrink-0 ${
+              step.done ? 'bg-slate-100 text-ink-400' : 'bg-white border border-slate-200 text-ink-500'
+            }`}>
+              {fmtActionMonths(step.month)}
+            </span>
+          </div>
+          {step.detail && (
+            <p className={`text-xs mt-1 ${step.done ? 'text-ink-300' : 'text-ink-500'}`}>
+              {step.detail}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="shrink-0 h-7 w-7 grid place-items-center rounded-full text-ink-300
+                     hover:text-ink-700 hover:bg-slate-100"
+          aria-label="Remove step"
+          title="Remove step"
+        >
+          ✕
+        </button>
+      </div>
+    </li>
+  )
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const {
@@ -154,6 +318,7 @@ export default function Dashboard() {
     addGoal, removeGoal, updateGoal,
     updateRate,
     updateSection,
+    updateProfile,
     seedFromFinances,
     setPriorities,
   } = usePlanner()
@@ -322,7 +487,7 @@ export default function Dashboard() {
             </div>
           </div>
           <dl className="mt-6 grid gap-3 sm:grid-cols-2 text-sm">
-            <Info k="Age range" v={profile.personal.ageRange} />
+            <Info k="Age" v={profile.personal.age ? `${profile.personal.age} yrs` : ''} />
             <Info k="Life stage" v={
               Array.isArray(profile.personal.lifeStage)
                 ? (profile.personal.lifeStage.length ? profile.personal.lifeStage.join(', ') : '')
@@ -348,6 +513,18 @@ export default function Dashboard() {
         <StatCard label="Runway"         value={runwayMonths === null ? '—' : `${runwayMonths} mo`} tone={runwayTone} />
         <StatCard label="Net position"   value={fmtMoney(netWorth)} />
       </div>
+
+      <ActionPlanCard
+        actionPlan={profile.actionPlan || []}
+        onToggle={(id) => updateProfile((cur) => ({
+          actionPlan: (cur.actionPlan || []).map((a) =>
+            a.id === id ? { ...a, done: !a.done } : a,
+          ),
+        }))}
+        onRemove={(id) => updateProfile((cur) => ({
+          actionPlan: (cur.actionPlan || []).filter((a) => a.id !== id),
+        }))}
+      />
 
       {/* Decision-making CTA — opens the prioritization modal */}
       <PrioritizeCTA

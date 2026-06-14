@@ -161,7 +161,6 @@ const REGIONS_BY_COUNTRY = {
 }
 
 function StepPersonal({ profile, updateSection }) {
-  const ageRanges = ['Under 25', '25–34', '35–44', '45–54', '55–64', '65+']
   const stages = ['Student', 'Single / independent', 'In a relationship', 'Parent', 'Empty nester', 'Retired']
   const selectedStages = asLifeStageArray(profile.personal.lifeStage)
 
@@ -178,18 +177,27 @@ function StepPersonal({ profile, updateSection }) {
       <p className="mt-1 text-ink-500 text-sm">This helps us tune the dashboard. Nothing is mandatory.</p>
       <div className="mt-6 space-y-5">
         <div>
-          <p className="label">Age range</p>
-          <div className="flex flex-wrap gap-2">
-            {ageRanges.map((a) => (
-              <Choice
-                key={a}
-                selected={profile.personal.ageRange === a}
-                onClick={() => updateSection('personal', { ageRange: a })}
-              >
-                {a}
-              </Choice>
-            ))}
+          <label className="label" htmlFor="age">Age</label>
+          <div className="relative max-w-[180px]">
+            <input
+              id="age"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              max="120"
+              step="1"
+              className="input pr-14"
+              placeholder="e.g. 32"
+              value={profile.personal.age ?? ''}
+              onChange={(e) =>
+                updateSection('personal', { age: e.target.value })
+              }
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
           </div>
+          <p className="mt-1 text-[11px] text-ink-400">
+            We use this to anchor milestone-age goals (e.g. "Hit $1M by 50").
+          </p>
         </div>
         <div>
           <p className="label">
@@ -642,7 +650,7 @@ function StepReview({ profile }) {
         <div className="card">
           <h3 className="font-bold">About you</h3>
           <p className="text-sm text-ink-500 mt-1">
-            {profile.personal.fullName || 'Anonymous'} · {profile.personal.ageRange || '—'} · {stageLabel}
+            {profile.personal.fullName || 'Anonymous'} · {profile.personal.age ? `${profile.personal.age} yrs` : '—'} · {stageLabel}
             {locLabel ? ` · ${locLabel}` : ''}
           </p>
         </div>

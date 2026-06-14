@@ -187,7 +187,7 @@ export default function Gameboard() {
 }
 
 function GameboardInner({ profile }) {
-  const { updateSection } = usePlanner()
+  const { updateSection, updateProfile } = usePlanner()
   const [board, setBoard]           = useState(() => buildBoard(profile))
   const [month, setMonth]           = useState(0)
   const [floorMonth, setFloorMonth] = useState(0) // time only moves forward
@@ -205,8 +205,16 @@ function GameboardInner({ profile }) {
   const [addedIncome, setAddedIncome] = useState(0)
 
   // Every meaningful move on the board (capture, contribution change, loan)
-  // is logged here so the sandbox plan becomes a real-life checklist.
-  const [actions, setActions] = useState([])
+  // is logged into profile.actionPlan so the strategy survives navigation
+  // and can be ticked off from anywhere in the app.
+  const actions = profile.actionPlan || []
+  const setActions = (updater) => {
+    updateProfile((current) => ({
+      actionPlan: typeof updater === 'function'
+        ? updater(current.actionPlan || [])
+        : updater,
+    }))
+  }
   const addActions = (...items) =>
     setActions((prev) => [
       ...prev,
@@ -1221,6 +1229,7 @@ function GameboardInner({ profile }) {
           addedIncome={addedIncome}
           assetContributions={assetContributions}
           liabilityPayments={liabilityPayments}
+          country={profile.personal?.country}
           onClose={() => setShowIncome(false)}
           onSave={(payload) => updateSection('finances', payload)}
         />
@@ -1677,8 +1686,13 @@ function ActionStep({ step, index, onToggle, onRemove }) {
 function IncomeDisclosureModal({
   currentTotal, currentSources, addedIncome = 0,
   assetContributions = 0, liabilityPayments = 0,
-  onClose, onSave,
+  country, onClose, onSave,
 }) {
+  // Localize the deductions hint so US users see federal/state/FICA
+  // instead of Canadian payroll deductions.
+  const deductionsHint = country === 'US'
+    ? 'Take-home pay after federal & state income tax, Social Security, Medicare, 401(k), and other automatic deductions. We\'ll add the gross-up math for taxes in a later update.'
+    : 'Take-home pay after income tax, CPP/EI, pension, and other automatic deductions. We\'ll add the gross-up math for taxes in a later update.'
   // Seed the inputs. If we already have a per-source breakdown, use that.
   // Otherwise migrate any legacy single-field total into Employment so we
   // don't lose the user's existing disclosure.
@@ -1796,9 +1810,7 @@ function IncomeDisclosureModal({
               </span>
             </div>
             <p className="mt-1 text-[11px] text-ink-400">
-              Take-home pay after income tax, CPP/EI, pension, and other
-              automatic deductions. We'll add the gross-up math for taxes in
-              a later update.
+              {deductionsHint}
             </p>
           </div>
 
@@ -1916,8 +1928,8 @@ function PortraitModal({
   // ── Vector values ───────────────────────────────────────────────────
   // Upper bound of each wealth band — the user reaches the next level by
   // crossing past these. Last entry is the entry into the top tier.
-  const WEALTH_THRESHOLDS = [1000, 10000, 100000, 500000, 4000000]
-  const nextThreshold = lvl < 5 ? WEALTH_THRESHOLDS[lvl] : null
+  const WEALTH_THRESHOLDS = [1000, 10000, 100000, 500000, 4000000, 20000000]
+  const nextThreshold = lvl < 6 ? WEALTH_THRESHOLDS[lvl] : null
 
   // Protection: liquid investments ÷ monthly income = months of income
   // your liquid pool could replace if your earnings stopped.

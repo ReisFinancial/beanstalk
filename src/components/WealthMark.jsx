@@ -1,5 +1,5 @@
 /**
- * Six monoline illustrations representing the user's wealth level,
+ * Seven monoline illustrations representing the user's wealth level,
  * keyed off liquid net worth. Each is a single-color SVG using
  * stroke="currentColor", so they inherit color from the parent's
  * `text-*` Tailwind utility.
@@ -14,7 +14,8 @@
  *   Level 2: $10,000 – $100,000   — car
  *   Level 3: $100,000 – $500,000  — house
  *   Level 4: $500,000 – $4M       — bigger house + neat property
- *   Level 5: $4M and above        — multi-floor mixed-use building
+ *   Level 5: $4M – $20M           — multi-floor mixed-use building
+ *   Level 6: $20M and above       — city skyline (real estate portfolio)
  */
 
 const STROKE = {
@@ -184,8 +185,55 @@ export function WealthLevel5(props) {
   )
 }
 
+// ─── Level 6 — City skyline ──────────────────────────────────────────
+export function WealthLevel6(props) {
+  return (
+    <MarkWrap label="Wealth level 6 — city skyline" {...props}>
+      {/* Floor */}
+      <path d="M 20 170 L 220 170" />
+
+      {/* Left building — short, 4 stories */}
+      <path d="M 30 95 L 30 170" />
+      <path d="M 30 95 L 72 95" />
+      <path d="M 72 95 L 72 170" />
+      {/* Windows */}
+      <path d="M 40 108 L 40 120 L 62 120 L 62 108 Z" />
+      <path d="M 40 132 L 40 144 L 62 144 L 62 132 Z" />
+      <path d="M 40 156 L 40 165 L 62 165 L 62 156 Z" />
+
+      {/* Center building — tallest, with antenna */}
+      <path d="M 85 30 L 85 170" />
+      <path d="M 85 30 L 155 30" />
+      <path d="M 155 30 L 155 170" />
+      {/* Antenna */}
+      <path d="M 120 30 L 120 12" />
+      {/* 3 floors of paired windows */}
+      <path d="M 95 48 L 95 62 L 115 62 L 115 48 Z" />
+      <path d="M 125 48 L 125 62 L 145 62 L 145 48 Z" />
+      <path d="M 95 78 L 95 92 L 115 92 L 115 78 Z" />
+      <path d="M 125 78 L 125 92 L 145 92 L 145 78 Z" />
+      <path d="M 95 108 L 95 122 L 115 122 L 115 108 Z" />
+      <path d="M 125 108 L 125 122 L 145 122 L 145 108 Z" />
+      {/* Entrance */}
+      <path d="M 110 170 L 110 140 L 130 140 L 130 170" />
+
+      {/* Right building — medium height */}
+      <path d="M 168 65 L 168 170" />
+      <path d="M 168 65 L 212 65" />
+      <path d="M 212 65 L 212 170" />
+      {/* Windows */}
+      <path d="M 178 80 L 178 92 L 202 92 L 202 80 Z" />
+      <path d="M 178 105 L 178 117 L 202 117 L 202 105 Z" />
+      <path d="M 178 130 L 178 142 L 202 142 L 202 130 Z" />
+    </MarkWrap>
+  )
+}
+
 // ─── Wrapper + helpers ───────────────────────────────────────────────
-const MARKS = [WealthLevel0, WealthLevel1, WealthLevel2, WealthLevel3, WealthLevel4, WealthLevel5]
+const MARKS = [
+  WealthLevel0, WealthLevel1, WealthLevel2, WealthLevel3,
+  WealthLevel4, WealthLevel5, WealthLevel6,
+]
 
 export const WEALTH_LEVELS = [
   { id: 0, label: 'Level 0', range: 'Below $1,000',         illustration: 'Chair & desk' },
@@ -193,30 +241,32 @@ export const WEALTH_LEVELS = [
   { id: 2, label: 'Level 2', range: '$10,000 – $100,000',   illustration: 'Car' },
   { id: 3, label: 'Level 3', range: '$100,000 – $500,000',  illustration: 'House' },
   { id: 4, label: 'Level 4', range: '$500,000 – $4M',       illustration: 'Bigger house + property' },
-  { id: 5, label: 'Level 5', range: '$4M and above',        illustration: 'Mixed-use building' },
+  { id: 5, label: 'Level 5', range: '$4M – $20M',           illustration: 'Mixed-use building' },
+  { id: 6, label: 'Level 6', range: '$20M and above',       illustration: 'City skyline' },
 ]
 
 /**
- * Map a dollar amount → wealth level (0–5), per the user's stated bands.
+ * Map a dollar amount → wealth level (0–6), per the user's stated bands.
  * Boundaries are inclusive on the upper end (so $1,000 is still Level 0,
  * matching the spec where Level 1 starts at $1,000.01).
  */
 export function wealthLevel(amount) {
   const n = Number(amount) || 0
-  if (n <= 1000)    return 0
-  if (n <= 10000)   return 1
-  if (n <= 100000)  return 2
-  if (n <= 500000)  return 3
-  if (n <= 4000000) return 4
-  return 5
+  if (n <= 1000)     return 0
+  if (n <= 10000)    return 1
+  if (n <= 100000)   return 2
+  if (n <= 500000)   return 3
+  if (n <= 4000000)  return 4
+  if (n <= 20000000) return 5
+  return 6
 }
 
 /**
  * <WealthMark amount={number} /> picks the right illustration automatically.
- * <WealthMark level={0..5} /> bypasses the lookup if the level is known.
+ * <WealthMark level={0..6} /> bypasses the lookup if the level is known.
  */
 export default function WealthMark({ amount, level, ...rest }) {
   const lv = level !== undefined ? level : wealthLevel(amount)
-  const Cmp = MARKS[Math.max(0, Math.min(5, lv))]
+  const Cmp = MARKS[Math.max(0, Math.min(6, lv))]
   return <Cmp {...rest} />
 }

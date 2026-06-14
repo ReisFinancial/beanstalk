@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { usePlanner } from '../context/PlannerContext.jsx'
 import BeanstalkMark from './BeanstalkMark.jsx'
 
 function Logo({ className = '' }) {
@@ -22,6 +23,7 @@ const navItems = [
 
 export default function Layout() {
   const { user, logout } = useAuth()
+  const { profile } = usePlanner()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -34,6 +36,10 @@ export default function Layout() {
     if (key === 'play') return onGameboard
     return onDashboard && currentView === key
   }
+
+  // Outstanding action-plan steps drive the badge on the Play nav item so
+  // the user gets pulled back to follow through on what they planned.
+  const playPending = (profile?.actionPlan || []).filter((a) => !a.done).length
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -48,13 +54,18 @@ export default function Layout() {
                 <Link
                   key={item.key}
                   to={item.to}
-                  className={`px-3 py-2 rounded-full text-sm font-semibold transition ${
+                  className={`relative px-3 py-2 rounded-full text-sm font-semibold transition ${
                     active
                       ? 'bg-grape-100 text-grape-700'
                       : 'text-ink-500 hover:text-ink-900 hover:bg-slate-100'
                   }`}
                 >
                   <span className="mr-1.5">{item.icon}</span>{item.label}
+                  {item.key === 'play' && playPending > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-grape-600 text-white text-[10px] font-bold align-middle">
+                      {playPending}
+                    </span>
+                  )}
                 </Link>
               )
             })}
@@ -91,11 +102,18 @@ export default function Layout() {
               <li key={item.key}>
                 <Link
                   to={item.to}
-                  className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold ${
+                  className={`relative flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold ${
                     active ? 'text-grape-700' : 'text-ink-500'
                   }`}
                 >
-                  <span className="text-lg leading-none">{item.icon}</span>
+                  <span className="relative text-lg leading-none">
+                    {item.icon}
+                    {item.key === 'play' && playPending > 0 && (
+                      <span className="absolute -top-1.5 -right-2.5 min-w-[15px] h-[15px] px-0.5 rounded-full bg-grape-600 text-white text-[9px] font-bold flex items-center justify-center">
+                        {playPending}
+                      </span>
+                    )}
+                  </span>
                   {item.label}
                 </Link>
               </li>
