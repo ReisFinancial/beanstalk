@@ -9,12 +9,6 @@ const GOAL_CATEGORIES = [
   { id: 'spending',   label: 'Increase spending allocation',   emoji: '💸' },
   { id: 'other',      label: 'Other',                       emoji: '🎯' },
 ]
-const HORIZONS = [
-  { id: 'short', label: '0–1 yr' },
-  { id: 'mid',   label: '1–3 yrs' },
-  { id: 'long',  label: '3+ yrs' },
-]
-
 const CLASSIFICATIONS = [
   { id: 'asset',     label: 'Asset',     emoji: '🟢' },
   { id: 'liability', label: 'Liability', emoji: '🔻' },
@@ -67,7 +61,7 @@ const META = {
  * Props:
  *   type          : initial classification ('asset' | 'liability' | 'goal')
  *   mode          : 'add' (default) | 'edit'
- *   initialValue  : existing item for edit mode — { label|title, amount?, category?, horizon?, targetAmount?, liabilityId? }
+ *   initialValue  : existing item for edit mode — { label|title, amount?, category?, targetAge?, targetAmount?, liabilityId? }
  *   liabilities   : full list of liabilities (used by the goal "debt" picker)
  *   onClose       : () => void
  *   onSubmit      : (type, payload) => void — callback receives the (possibly reclassified) type
@@ -119,7 +113,11 @@ export default function AddItemModal({
     return LEGACY_CATEGORY_MAP[c] || 'other'
   })()
   const [category, setCategory]           = useState(initialCategory)
-  const [horizon, setHorizon]             = useState(initialValue?.horizon || 'mid')
+  const [targetAge, setTargetAge]         = useState(
+    initialValue?.targetAge !== undefined && initialValue.targetAge !== null
+      ? String(initialValue.targetAge)
+      : '',
+  )
   const [targetAmount, setTargetAmount]   = useState(
     initialValue?.targetAmount !== undefined && initialValue.targetAmount !== null
       ? String(initialValue.targetAmount)
@@ -157,7 +155,9 @@ export default function AddItemModal({
     const trimmed = label.trim()
     if (!trimmed) return
     if (type === 'goal') {
-      const payload = { title: trimmed, category, horizon }
+      const payload = { title: trimmed, category }
+      const age = Number(targetAge)
+      payload.targetAge = Number.isFinite(age) && age > 0 ? Math.round(age) : null
       if (category === 'investment' || category === 'other') {
         const tgt = Number(targetAmount)
         payload.targetAmount = Number.isFinite(tgt) && tgt >= 0 ? tgt : 0
@@ -435,23 +435,27 @@ export default function AddItemModal({
               )}
 
               <div>
-                <p className="label">Time horizon</p>
-                <div className="flex flex-wrap gap-2">
-                  {HORIZONS.map((h) => (
-                    <button
-                      type="button"
-                      key={h.id}
-                      onClick={() => setHorizon(h.id)}
-                      className={`chip border ${
-                        horizon === h.id
-                          ? 'bg-grape-50 border-grape-400 text-grape-800'
-                          : 'bg-white border-slate-200 text-ink-700'
-                      }`}
-                    >
-                      {h.label}
-                    </button>
-                  ))}
+                <label className="label" htmlFor="goal-target-age">
+                  Target age <span className="text-ink-400 font-normal">(optional)</span>
+                </label>
+                <div className="relative max-w-[200px]">
+                  <input
+                    id="goal-target-age"
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max="120"
+                    step="1"
+                    className="input pr-14"
+                    placeholder="e.g. 50"
+                    value={targetAge}
+                    onChange={(e) => setTargetAge(e.target.value)}
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
                 </div>
+                <p className="mt-1 text-[11px] text-ink-400">
+                  The age you'd like to reach this milestone by.
+                </p>
               </div>
             </>
           )}

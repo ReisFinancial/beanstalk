@@ -20,7 +20,8 @@ const GOAL_CAT_EMOJI = {
   money: '💰', career: '🧑‍💻', health: '💪',
   learning: '📚', relationships: '❤️', lifestyle: '🌿',
 }
-const HORIZON_LABEL = { short: '0–1 yr', mid: '1–3 yrs', long: '3+ yrs' }
+// Show "By age X" if the goal has a target age, otherwise nothing.
+const goalAgeHint = (g) => (g?.targetAge ? `By age ${g.targetAge}` : '')
 
 const PLAN_TYPES = [
   { id: 'loanPaydown',     label: 'Pay a loan off faster' },
@@ -148,7 +149,7 @@ export default function ActionPlanner({ profile }) {
         key: `goal:${g.id}`,
         group: 'Goals',
         label: `${GOAL_CAT_EMOJI[g.category] || '🎯'} ${g.title}`,
-        hint: HORIZON_LABEL[g.horizon] || '',
+        hint: goalAgeHint(g),
       })),
     ]
   }, [assets, liabilities, goals])
@@ -310,7 +311,7 @@ export default function ActionPlanner({ profile }) {
           <option value="">Select a goal…</option>
           {goals.map((g) => (
             <option key={g.id} value={g.id}>
-              {(GOAL_CAT_EMOJI[g.category] || '🎯')}  {g.title}  ·  {HORIZON_LABEL[g.horizon] || ''}
+              {(GOAL_CAT_EMOJI[g.category] || '🎯')}  {g.title}  ·  {goalAgeHint(g)}
             </option>
           ))}
         </select>

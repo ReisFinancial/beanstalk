@@ -269,6 +269,12 @@ function GameboardInner({ profile }) {
     .reduce((s, t) => s + targetValueAt(t, month), 0)
   const netWorth = liveAssets - liveDebt
 
+  // Project the user's age at the current timeline position so every
+  // timeline display can show "(age X)" alongside the duration.
+  const ageNow = Number(profile.personal?.age) || null
+  const projectedAge = ageNow ? Math.floor(ageNow + month / 12) : null
+  const ageSuffix = projectedAge != null ? ` (age ${projectedAge})` : ''
+
   // ── Shared cashflow + portrait math ─────────────────────────────────
   // Two breakdowns of cash flowing out each month — assets (contributions
   // into savings/investments/etc.) and liabilities (debt paydowns). They
@@ -1006,7 +1012,7 @@ function GameboardInner({ profile }) {
           }`}>
             {fmtMoney(netWorth)}
           </p>
-          <p className="mt-1 text-xs text-ink-500">At {fmtTimeline(month)}</p>
+          <p className="mt-1 text-xs text-ink-500">At {fmtTimeline(month)}{ageSuffix}</p>
         </div>
         <div className="card">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">Debts left</p>
@@ -1024,7 +1030,7 @@ function GameboardInner({ profile }) {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-display font-bold text-lg">Timeline</h3>
           <p className="font-display text-2xl font-extrabold text-grape-700">
-            {fmtTimeline(month)}
+            {fmtTimeline(month)}{ageSuffix}
           </p>
         </div>
         <input
@@ -1239,6 +1245,7 @@ function GameboardInner({ profile }) {
         <PortraitModal
           netWorth={netWorth}
           month={month}
+          projectedAge={projectedAge}
           liquidValue={liquidValue}
           passiveIncome={passiveIncome}
           monthlyIncomeAfterTax={monthlyIncomeAfterTax}
@@ -1911,11 +1918,14 @@ function Row({ label, value, bold = false, tone = 'default' }) {
 // hold "vector" feedback attributes — placeholders for now, real metrics
 // can be slotted in later without changing the layout.
 function PortraitModal({
-  netWorth, month,
+  netWorth, month, projectedAge = null,
   liquidValue = 0, passiveIncome = 0, monthlyIncomeAfterTax = 0,
   foundationAmount = 0, annualGrowth = 0,
   onClose,
 }) {
+  // Mirror the time-bar's "(age X)" suffix everywhere this modal echoes
+  // the current month so the user keeps their place on the timeline.
+  const ageSuffix = projectedAge != null ? ` (age ${projectedAge})` : ''
   const lvl  = wealthLevel(netWorth)
   const meta = WEALTH_LEVELS[lvl] || WEALTH_LEVELS[0]
 
@@ -1991,7 +2001,7 @@ function PortraitModal({
       detail: 'Annual interest earned on savings, investments, retirement, and crypto.' },
     { id: 'generational', emoji: '🌳', label: 'Generational Wealth',
       value: fmtMoney(netWorth),
-      detail: `Net worth at ${fmtTimeline(month)}.` },
+      detail: `Net worth at ${fmtTimeline(month)}${ageSuffix}.` },
     { id: 'foundation', emoji: '🧱', label: 'Foundation',
       value: fmtMoney(foundationAmount),
       detail: '10 years of income + the total estate value.' },
@@ -2018,7 +2028,7 @@ function PortraitModal({
           <div>
             <h2 className="font-display text-xl font-extrabold">Portrait of your plan</h2>
             <p className="text-sm text-ink-500 mt-0.5">
-              A live read on the health of your strategy at {fmtTimeline(month)}.
+              A live read on the health of your strategy at {fmtTimeline(month)}{ageSuffix}.
             </p>
           </div>
           <button

@@ -23,17 +23,11 @@ const GOAL_CATEGORIES = [
   { id: 'other',      label: 'Other',                        emoji: '🎯' },
 ]
 
-const HORIZONS = [
-  { id: 'short', label: '0–1 year' },
-  { id: 'mid',   label: '1–3 years' },
-  { id: 'long',  label: '3+ years' },
-]
-
 const SAMPLE_GOALS = [
-  { title: 'Build a 6-month emergency fund', category: 'investment', horizon: 'mid',   targetAmount: 15000 },
-  { title: 'Pay off credit card debt',       category: 'debt',       horizon: 'short' },
-  { title: 'Save for a down payment',        category: 'investment', horizon: 'long',  targetAmount: 50000 },
-  { title: 'Eat out twice a week',           category: 'spending',   horizon: 'short' },
+  { title: 'Build a 6-month emergency fund', category: 'investment', targetAge: 35, targetAmount: 15000 },
+  { title: 'Pay off credit card debt',       category: 'debt',       targetAge: 30 },
+  { title: 'Save for a down payment',        category: 'investment', targetAge: 35, targetAmount: 50000 },
+  { title: 'Eat out twice a week',           category: 'spending',   targetAge: 40 },
 ]
 
 function uid() {
@@ -277,7 +271,7 @@ function StepGoals({ profile, setGoals, setPriorities }) {
   const [draft, setDraft] = useState({
     title: '',
     category: 'other',
-    horizon: 'mid',
+    targetAge: '',
     targetAmount: '',
     spendingBucket: 'discretionary',
     spendingIncrease: '',
@@ -290,8 +284,9 @@ function StepGoals({ profile, setGoals, setPriorities }) {
       id: uid(),
       title: t,
       category: draft.category,
-      horizon: draft.horizon,
     }
+    const age = Number(draft.targetAge)
+    if (Number.isFinite(age) && age > 0) goal.targetAge = Math.round(age)
     if (draft.category === 'investment' || draft.category === 'other') {
       const tgt = Number(draft.targetAmount)
       goal.targetAmount = Number.isFinite(tgt) && tgt >= 0 ? tgt : 0
@@ -410,16 +405,25 @@ function StepGoals({ profile, setGoals, setPriorities }) {
             </div>
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          {HORIZONS.map((h) => (
-            <Choice
-              key={h.id}
-              selected={draft.horizon === h.id}
-              onClick={() => setDraft({ ...draft, horizon: h.id })}
-            >
-              {h.label}
-            </Choice>
-          ))}
+        <div>
+          <label className="label" htmlFor="goal-target-age">
+            Target age <span className="text-ink-400 font-normal">(optional)</span>
+          </label>
+          <div className="relative max-w-[200px]">
+            <input
+              id="goal-target-age"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              max="120"
+              step="1"
+              className="input pr-14"
+              placeholder="e.g. 50"
+              value={draft.targetAge}
+              onChange={(e) => setDraft({ ...draft, targetAge: e.target.value })}
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
+          </div>
         </div>
         <button type="button" onClick={addGoal} className="btn-primary w-full sm:w-auto">
           + Add goal
@@ -447,14 +451,16 @@ function StepGoals({ profile, setGoals, setPriorities }) {
         <ul className="mt-6 space-y-2">
           {profile.goals.map((g) => {
             const cat = GOAL_CATEGORIES.find((c) => c.id === g.category)
-            const hz  = HORIZONS.find((h) => h.id === g.horizon)
+            const age = g.targetAge
             return (
               <li key={g.id} className="card !p-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-2xl">{cat?.emoji ?? '🎯'}</span>
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{g.title}</p>
-                    <p className="text-xs text-ink-500">{cat?.label} · {hz?.label}</p>
+                    <p className="text-xs text-ink-500">
+                      {cat?.label}{age ? ` · By age ${age}` : ''}
+                    </p>
                   </div>
                 </div>
                 <button

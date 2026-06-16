@@ -30,6 +30,7 @@ export default function Hex({
   subtitle,
   tag,
   icon,
+  hideTag = false,
   onClick,
   onRemove,
   as: As = 'div',
@@ -54,19 +55,19 @@ export default function Hex({
           focus:outline-none focus:scale-[1.02]
         `}
       >
-        {icon && <span className="text-2xl leading-none mb-1" aria-hidden>{icon}</span>}
-        {(t.tag || tag) && (
+        {icon && <span className="text-xl leading-none mb-0.5" aria-hidden>{icon}</span>}
+        {!hideTag && (t.tag || tag) && (
           <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mb-0.5">
             {tag || t.tag}
           </span>
         )}
         {title && (
-          <span className="font-display text-[13px] sm:text-sm font-bold leading-tight line-clamp-2 max-w-[85%]">
+          <span className="font-display text-[13px] sm:text-sm font-bold leading-tight line-clamp-3 max-w-[92%]">
             {title}
           </span>
         )}
         {subtitle && (
-          <span className="text-[11px] font-semibold opacity-90 mt-0.5 line-clamp-1 max-w-[85%]">
+          <span className="text-[10px] font-semibold opacity-90 mt-0.5 line-clamp-1 max-w-[90%]">
             {subtitle}
           </span>
         )}

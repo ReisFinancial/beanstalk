@@ -14,7 +14,7 @@ const emptyProfile = {
     country: '',   // 'CA' | 'US'
     region: '',    // province (CA) or state (US)
   },
-  goals: [], // { id, title, horizon, category }
+  goals: [], // { id, title, category, targetAge, ... }
   priorities: [], // ordered list of goal ids
   assets: [], // { id, label, amount, note? }
   liabilities: [], // { id, label, amount, note? }

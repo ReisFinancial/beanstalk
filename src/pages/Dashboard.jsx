@@ -5,7 +5,7 @@ import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
-import PrioritizeGoalsModal from '../components/PrioritizeGoalsModal.jsx'
+import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../components/PrioritizeGoalsModal.jsx'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
 
@@ -85,10 +85,20 @@ const CATEGORIES = {
   lifestyle:     { label: 'Lifestyle',     emoji: '🌿', color: 'from-emerald-300/20 to-emerald-200/20' },
 }
 
-const HORIZONS = {
-  short: '0–1 yr',
-  mid:   '1–3 yrs',
-  long:  '3+ yrs',
+// Format a goal's target age relative to the user's current age.
+// Returns "" when either piece is missing so the caller can render
+// nothing rather than a dangling label.
+function targetAgeLabel(goal, currentAge) {
+  const t = Number(goal?.targetAge)
+  if (!Number.isFinite(t) || t <= 0) return ''
+  const a = Number(currentAge)
+  if (Number.isFinite(a) && a > 0) {
+    const yrs = t - a
+    if (yrs <= 0) return `By age ${t} · now`
+    if (yrs < 1)  return `By age ${t} · ${Math.round(yrs * 12)} mo away`
+    return `By age ${t} · ${yrs === 1 ? '1 yr' : `${yrs} yrs`} away`
+  }
+  return `By age ${t}`
 }
 
 function fmtMoney(n) {
@@ -112,8 +122,9 @@ function StatCard({ label, value, tone = 'default', hint }) {
   )
 }
 
-function GoalCard({ goal, rank }) {
+function GoalCard({ goal, rank, currentAge }) {
   const c = CATEGORIES[goal.category] || CATEGORIES.lifestyle
+  const ageLabel = targetAgeLabel(goal, currentAge)
   return (
     <div className={`card bg-gradient-to-br ${c.color} relative overflow-hidden`}>
       <div className="flex items-start justify-between">
@@ -126,7 +137,7 @@ function GoalCard({ goal, rank }) {
         )}
       </div>
       <h3 className="mt-3 font-display text-lg font-bold leading-snug">{goal.title}</h3>
-      <p className="mt-1 text-xs text-ink-500">Horizon · {HORIZONS[goal.horizon] || '—'}</p>
+      <p className="mt-1 text-xs text-ink-500">{ageLabel || 'No target age set'}</p>
     </div>
   )
 }
@@ -424,19 +435,7 @@ export default function Dashboard() {
   if (view === 'goals') {
     return <GoalsView
       profile={profile}
-      addingType={addingType}
-      setAddingType={setAddingType}
-      editing={editing}
-      setEditing={setEditing}
-      addAsset={addAsset}
-      removeAsset={removeAsset}
-      updateAsset={updateAsset}
-      addLiability={addLiability}
-      removeLiability={removeLiability}
-      updateLiability={updateLiability}
-      addGoal={addGoal}
-      removeGoal={removeGoal}
-      updateGoal={updateGoal}
+      setPriorities={setPriorities}
     />
   }
 
@@ -539,7 +538,9 @@ export default function Dashboard() {
         </div>
         {topGoals.length === 0 ? <EmptyGoals /> : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {topGoals.slice(0, 3).map((g, i) => <GoalCard key={g.id} goal={g} rank={i + 1} />)}
+            {topGoals.slice(0, 3).map((g, i) => (
+              <GoalCard key={g.id} goal={g} rank={i + 1} currentAge={profile.personal.age} />
+            ))}
           </div>
         )}
       </section>
@@ -858,6 +859,7 @@ const SNAPSHOT_FILTERS = [
   { id: 'all',         label: 'All',         tone: 'ink' },
   { id: 'assets',      label: 'Assets',      tone: 'brand' },
   { id: 'liabilities', label: 'Liabilities', tone: 'red' },
+  { id: 'goals',       label: 'Goals',       tone: 'grape' },
 ]
 
 const GOAL_CAT_EMOJI = {
@@ -867,8 +869,6 @@ const GOAL_CAT_EMOJI = {
   money: '💰', career: '🧑‍💻', health: '💪',
   learning: '📚', relationships: '❤️', lifestyle: '🌿',
 }
-const HORIZON_LABEL = { short: '0–1 yr', mid: '1–3 yrs', long: '3+ yrs' }
-
 function SnapshotView({
   profile,
   addingType, setAddingType,
@@ -886,6 +886,7 @@ function SnapshotView({
 
   const assets = profile.assets || []
   const liabilities = profile.liabilities || []
+  const goals = profile.goals || []
   const rates = profile.rates
 
   // Projected values per hex — recompute only when inputs change
@@ -925,6 +926,7 @@ function SnapshotView({
 
   const showAssets      = filter === 'all' || filter === 'assets'
   const showLiabilities = filter === 'all' || filter === 'liabilities'
+  const showGoals       = filter === 'all' || filter === 'goals'
 
   // Add: new signature is (type, payload)
   const handleAddSubmit = (type, payload) => {
@@ -963,7 +965,7 @@ function SnapshotView({
     setEditing(null)
   }
 
-  const isEmpty = assets.length + liabilities.length === 0
+  const isEmpty = assets.length + liabilities.length + goals.length === 0
 
   return (
     <div className="space-y-6">
@@ -1018,6 +1020,10 @@ function SnapshotView({
             onClick={() => setAddingType('liability')}
             className="btn-secondary !py-2 !px-4 text-sm border-red-200 text-red-700 hover:bg-red-50"
           >+ Liability</button>
+          <button
+            onClick={() => setAddingType('goal')}
+            className="btn-secondary !py-2 !px-4 text-sm border-grape-200 text-grape-700 hover:bg-grape-50"
+          >+ Goal</button>
         </div>
       </div>
 
@@ -1048,11 +1054,25 @@ function SnapshotView({
             onRemove={() => removeLiability(l.id)}
           />
         ))}
+
+        {showGoals && goals.map((g) => (
+          <Hex
+            key={g.id}
+            tone="goal"
+            as="button"
+            icon={GOAL_CAT_EMOJI[g.category] || '🎯'}
+            title={g.title}
+            subtitle={g.targetAge ? `By age ${g.targetAge}` : ''}
+            hideTag
+            onClick={() => setEditing({ type: 'goal', item: g })}
+            onRemove={() => removeGoal(g.id)}
+          />
+        ))}
       </div>
 
       {isEmpty && (
         <p className="text-center text-sm text-ink-500">
-          Start by adding a hex for an asset you own or a debt you owe.
+          Start by adding a hex for an asset, debt, or goal.
         </p>
       )}
 
@@ -1063,6 +1083,7 @@ function SnapshotView({
             unit={unit} setUnit={setUnit}
             periods={periods} setPeriods={setPeriods}
             projectedNet={netWorth}
+            currentAge={profile.personal?.age}
           />
           <WealthLevelCard netWorth={netWorth} />
         </div>
@@ -1094,10 +1115,17 @@ function SnapshotView({
 }
 
 // Slider that drives the future-value projection across every hex.
-function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet }) {
+function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet, currentAge }) {
   const max = unit === 'months' ? 60 : 40
   const suffix = unit === 'months' ? 'mo' : (periods === 1 ? 'yr' : 'yrs')
-  const label = periods === 0 ? 'Today' : `${periods} ${suffix}`
+  // Project the user's age at the slider's current position so the user
+  // sees themselves on the timeline, not just an abstract horizon.
+  const ageNow = Number(currentAge) || null
+  const yearsFromNow = unit === 'months' ? periods / 12 : periods
+  const projectedAge = ageNow ? Math.floor(ageNow + yearsFromNow) : null
+  const ageSuffix = projectedAge != null ? ` (age ${projectedAge})` : ''
+  const base = periods === 0 ? 'Today' : `${periods} ${suffix}`
+  const label = `${base}${ageSuffix}`
 
   const switchUnit = (next) => {
     if (next === unit) return
@@ -1208,153 +1236,215 @@ function WealthLevelCard({ netWorth }) {
 
 // ----- Goals (hex grid) ------------------------------------------------
 
-function GoalsView({
-  profile,
-  addingType, setAddingType,
-  editing, setEditing,
-  addAsset, removeAsset, updateAsset,
-  addLiability, removeLiability, updateLiability,
-  addGoal, removeGoal, updateGoal,
-}) {
+function GoalsView({ profile, setPriorities }) {
   const goals       = profile.goals       || []
-  const liabilities = profile.liabilities || []
+  const priorityIds = profile.priorities  || []
+  const isEmpty = goals.length === 0
+  const [prioritizing, setPrioritizing] = useState(false)
 
   // Sort: prioritized goals first (in their stored order), the rest after.
   const orderedGoals = useMemo(() => {
-    const priorityIds = profile.priorities || []
     const byId = new Map(goals.map((g) => [g.id, g]))
     const top = priorityIds.map((id) => byId.get(id)).filter(Boolean)
     const rest = goals.filter((g) => !priorityIds.includes(g.id))
     return [...top, ...rest]
-  }, [goals, profile.priorities])
+  }, [goals, priorityIds])
 
-  // Add: same signature as Snapshot — handed in by the parent.
-  const handleAddSubmit = (type, payload) => {
-    if (type === 'asset') addAsset(payload)
-    else if (type === 'liability') addLiability(payload)
-    else if (type === 'goal') addGoal(payload)
-    setAddingType(null)
-  }
-
-  // Edit: support reclassification across all three types so a hex
-  // started here as a goal can become an asset or liability if the user
-  // changes their mind.
-  const handleEditSubmit = (newType, payload) => {
-    if (!editing) return
-    const { type: oldType, item } = editing
-    if (newType === oldType) {
-      if (newType === 'asset')          updateAsset(item.id, payload)
-      else if (newType === 'liability') updateLiability(item.id, payload)
-      else if (newType === 'goal')      updateGoal(item.id, payload)
-    } else {
-      if (oldType === 'asset')          removeAsset(item.id)
-      else if (oldType === 'liability') removeLiability(item.id)
-      else if (oldType === 'goal')      removeGoal(item.id)
-      if (newType === 'asset')          addAsset(payload)
-      else if (newType === 'liability') addLiability(payload)
-      else if (newType === 'goal')      addGoal(payload)
-    }
-    setEditing(null)
-  }
-
-  const handleEditDelete = () => {
-    if (!editing) return
-    const { type, item } = editing
-    if (type === 'asset')          removeAsset(item.id)
-    else if (type === 'liability') removeLiability(item.id)
-    else if (type === 'goal')      removeGoal(item.id)
-    setEditing(null)
-  }
-
-  // Quick by-horizon counts for the strip up top
-  const counts = {
-    short: goals.filter((g) => g.horizon === 'short').length,
-    mid:   goals.filter((g) => g.horizon === 'mid').length,
-    long:  goals.filter((g) => g.horizon === 'long').length,
-  }
-  const isEmpty = goals.length === 0
+  // Readiness checks — each row in the prep checklist lights up green
+  // when satisfied, so the user knows what to fix before they start.
+  const currentAge      = Number(profile.personal?.age) || null
+  const targetAgesSet   = goals.filter(
+    (g) => Number.isFinite(Number(g.targetAge)) && Number(g.targetAge) > 0,
+  ).length
+  const haveEnoughGoals = goals.length >= 2
+  const haveAge         = !!currentAge
+  const allHaveTargets  = goals.length > 0 && targetAgesSet === goals.length
+  const readyToStart    = haveEnoughGoals
 
   return (
     <div className="space-y-6">
       <Header view="goals" />
 
-      {/* KPI strip — total + by horizon */}
-      <div className="grid gap-4 sm:grid-cols-4">
-        <div className="card bg-card-gradient">
-          <p className="text-xs font-semibold uppercase tracking-wide text-grape-700">Total goals</p>
-          <p className="mt-1 font-display text-2xl font-extrabold">{goals.length}</p>
-          <p className="mt-1 text-xs text-ink-500">{(profile.priorities || []).length} prioritized</p>
-        </div>
-        <div className="card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">0–1 yr</p>
-          <p className="mt-1 font-display text-2xl font-extrabold">{counts.short}</p>
-          <p className="mt-1 text-xs text-ink-500">Short horizon</p>
-        </div>
-        <div className="card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">1–3 yrs</p>
-          <p className="mt-1 font-display text-2xl font-extrabold">{counts.mid}</p>
-          <p className="mt-1 text-xs text-ink-500">Mid horizon</p>
-        </div>
-        <div className="card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">3+ yrs</p>
-          <p className="mt-1 font-display text-2xl font-extrabold">{counts.long}</p>
-          <p className="mt-1 text-xs text-ink-500">Long horizon</p>
-        </div>
-      </div>
-
-      {/* Add button row */}
-      <div className="flex items-center justify-end gap-2">
-        <button
-          onClick={() => setAddingType('goal')}
-          className="btn-secondary !py-2 !px-4 text-sm"
-        >+ Goal</button>
-      </div>
-
-      {/* Hex grid */}
-      <div className="honeycomb">
-        {orderedGoals.map((g) => (
-          <Hex
-            key={g.id}
-            tone="goal"
-            as="button"
-            icon={GOAL_CAT_EMOJI[g.category] || '🎯'}
-            title={g.title}
-            subtitle={HORIZON_LABEL[g.horizon] || ''}
-            onClick={() => setEditing({ type: 'goal', item: g })}
-            onRemove={() => removeGoal(g.id)}
-          />
-        ))}
-      </div>
-
-      {isEmpty && (
-        <p className="text-center text-sm text-ink-500">
-          No goals yet. Click <strong>+ Goal</strong> to add one — or revisit the wizard for a guided pass.
+      {/* Intro — explains the page's purpose. */}
+      <section className="card bg-card-gradient border-grape-200">
+        <h2 className="font-display text-xl font-extrabold text-grape-800">
+          Prepare to prioritize your goals
+        </h2>
+        <p className="text-sm text-ink-500 mt-1.5 max-w-2xl">
+          You'll score each of your goals on five dimensions, and we'll rank
+          them based on the results. Use this page to get ready — confirm
+          your goals are captured, target ages are set, and you've shared
+          your age. Then start the ranking when you're ready.
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            to="/dashboard?view=snapshot"
+            className="btn-secondary !py-2 !px-4 text-sm border-grape-200 text-grape-700 hover:bg-grape-50"
+          >
+            Manage goals in Snapshot →
+          </Link>
+        </div>
+      </section>
+
+      {/* Readiness checklist */}
+      <section className="card">
+        <h3 className="font-display font-bold text-lg">What you'll need</h3>
+        <p className="text-xs text-ink-500 mt-0.5">
+          A short readiness check so the ranking has good data to work with.
+        </p>
+        <ul className="mt-4 space-y-2 text-sm">
+          <ReadinessRow
+            done={haveEnoughGoals}
+            label="At least 2 goals captured"
+            hint={
+              goals.length === 0 ? 'No goals yet — add some in Snapshot.'
+              : goals.length === 1 ? 'Just one so far — add at least one more to compare against.'
+              : `You have ${goals.length} goals captured.`
+            }
+          />
+          <ReadinessRow
+            done={haveAge}
+            label="Your current age set"
+            hint={
+              haveAge ? `Currently ${currentAge} yrs.`
+              : 'Set your age in the wizard or Profile so milestone-age maths line up.'
+            }
+          />
+          <ReadinessRow
+            done={allHaveTargets}
+            label="Target age on every goal"
+            hint={
+              goals.length === 0 ? 'Add goals first.'
+              : allHaveTargets ? 'All goals have a target age.'
+              : `${targetAgesSet} of ${goals.length} set — open the Snapshot to fill the rest.`
+            }
+          />
+        </ul>
+      </section>
+
+      {/* Scoring dimensions */}
+      <section className="card">
+        <h3 className="font-display font-bold text-lg">How the ranking works</h3>
+        <p className="text-xs text-ink-500 mt-0.5">
+          You'll rate each goal 0–10 on these five dimensions. Financial
+          safety carries the heaviest weight.
+        </p>
+        <ol className="mt-4 grid gap-3 sm:grid-cols-2">
+          {PRIORITIZE_QUESTIONS.map((q, i) => (
+            <li
+              key={q.id}
+              className="rounded-2xl border border-slate-200 bg-white p-3"
+            >
+              <p className="flex items-baseline gap-2">
+                <span className="font-display text-sm font-extrabold text-grape-700 tabular-nums">
+                  {i + 1}.
+                </span>
+                <span className="text-sm font-bold text-ink-700">{q.title}</span>
+              </p>
+              <p className="text-xs text-ink-500 mt-1 leading-snug">
+                {q.question}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* The goal list — what's actually going into the ranking */}
+      {!isEmpty && (
+        <section className="card">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-display font-bold text-lg">Goals to be ranked</h3>
+              <p className="text-xs text-ink-500 mt-0.5">
+                {priorityIds.length > 0
+                  ? `${priorityIds.length} already ranked from a prior pass.`
+                  : 'No ranking yet — these will all start fresh.'}
+              </p>
+            </div>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {orderedGoals.map((g) => {
+              const rank = priorityIds.indexOf(g.id)
+              return (
+                <li
+                  key={g.id}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"
+                >
+                  <span className="text-xl shrink-0">
+                    {GOAL_CAT_EMOJI[g.category] || '🎯'}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold truncate">{g.title}</span>
+                    {g.targetAge && (
+                      <span className="block text-[11px] text-ink-500">
+                        {targetAgeLabel(g, currentAge)}
+                      </span>
+                    )}
+                  </span>
+                  {rank >= 0 && (
+                    <span className="chip border border-grape-200 bg-grape-50 text-grape-700 shrink-0">
+                      #{rank + 1}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       )}
+
+      {/* CTA */}
+      <div className="flex items-center justify-end gap-3 flex-wrap">
+        {!readyToStart && (
+          <p className="text-xs text-ink-500 flex-1">
+            Add more goals on the Snapshot to enable ranking.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => setPrioritizing(true)}
+          disabled={!readyToStart}
+          className="btn-primary !py-2 !px-5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {priorityIds.length > 0 ? 'Re-rank goals' : 'Start prioritizing'}
+        </button>
+      </div>
 
       {!isEmpty && <ActionPlanner profile={profile} />}
 
-      {addingType && (
-        <AddItemModal
-          type={addingType}
-          mode="add"
-          liabilities={liabilities}
-          onClose={() => setAddingType(null)}
-          onSubmit={handleAddSubmit}
-        />
-      )}
-
-      {editing && (
-        <AddItemModal
-          type={editing.type}
-          mode="edit"
-          initialValue={editing.item}
-          liabilities={liabilities}
-          onClose={() => setEditing(null)}
-          onSubmit={handleEditSubmit}
-          onDelete={handleEditDelete}
+      {prioritizing && (
+        <PrioritizeGoalsModal
+          goals={goals}
+          onClose={() => setPrioritizing(false)}
+          onSave={(orderedIds) => {
+            setPriorities(orderedIds)
+            setPrioritizing(false)
+          }}
         />
       )}
     </div>
+  )
+}
+
+function ReadinessRow({ done, label, hint }) {
+  return (
+    <li className="flex items-start gap-3 rounded-2xl border p-3 transition border-slate-200 bg-white">
+      <span
+        className={`mt-0.5 h-5 w-5 rounded-full grid place-items-center text-[11px] font-bold shrink-0 ${
+          done
+            ? 'bg-brand-500 text-white'
+            : 'bg-slate-100 text-slate-400 border border-slate-200'
+        }`}
+        aria-hidden
+      >
+        {done ? '✓' : '·'}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className={`block text-sm font-semibold ${done ? 'text-ink-700' : 'text-ink-700'}`}>
+          {label}
+        </span>
+        <span className="block text-xs text-ink-500 mt-0.5">{hint}</span>
+      </span>
+    </li>
   )
 }

@@ -19,9 +19,11 @@ const CATEGORY_EMOJI = {
   learning: '📚', relationships: '❤️', lifestyle: '🌿',
 }
 
-const HORIZON_LABEL = { short: '0–1 yr', mid: '1–3 yrs', long: '3+ yrs' }
+// Compact target-age label for goal rows in this modal. No "—" fallback
+// when the user hasn't set a target age — the row reads cleaner blank.
+const ageLine = (g) => (g?.targetAge ? `By age ${g.targetAge}` : '')
 
-const QUESTIONS = [
+export const QUESTIONS = [
   { id: 'peaceOfMind',     title: 'Peace of Mind',     question: 'How calm and safe does this decision feel?' },
   { id: 'dailyLifeImpact', title: 'Daily life impact', question: 'How much will this improve my daily life?' },
   { id: 'flexibility',     title: 'Flexibility',       question: 'How easy will it be to change your mind or back out later?' },
@@ -236,7 +238,7 @@ function SelectStep({ goals, selectedIds, toggle }) {
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold leading-snug truncate">{g.title}</span>
                 <span className="block text-[11px] text-ink-500 mt-0.5">
-                  {HORIZON_LABEL[g.horizon] || '—'}
+                  {ageLine(g) || '—'}
                 </span>
               </span>
               <span
@@ -338,7 +340,7 @@ function ResultsStep({ ranked }) {
                     {CATEGORY_EMOJI[r.goal.category] || '🎯'} {r.goal.title}
                   </p>
                   <p className="text-[11px] text-ink-500 mt-0.5">
-                    {HORIZON_LABEL[r.goal.horizon] || '—'}
+                    {ageLine(r.goal) || '—'}
                   </p>
                 </div>
               </div>
