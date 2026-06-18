@@ -6,6 +6,7 @@ import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../components/PrioritizeGoalsModal.jsx'
+import BuyingPowerModal from '../components/BuyingPowerModal.jsx'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
 
@@ -630,6 +631,8 @@ function Info({ k, v }) {
 function ContributionsCard({ profile, updateSection }) {
   const income           = Number(profile.finances?.monthlyIncome)    || 0
   const bareNecessities  = Number(profile.finances?.bareNecessities)  || 0
+  const buyingPower      = profile.finances?.buyingPowerAssessment || null
+  const [assessingBuyingPower, setAssessingBuyingPower] = useState(false)
 
   // Wealth generation = every hex's monthly contribution / payment
   const wealthGen = (
@@ -677,6 +680,7 @@ function ContributionsCard({ profile, updateSection }) {
       bar: 'bg-grape-500',
       dot: 'bg-grape-500',
       warn: overSpent,
+      assessable: true,
     },
   ]
 
@@ -703,6 +707,15 @@ function ContributionsCard({ profile, updateSection }) {
               <div className="flex items-center gap-2 min-w-0">
                 <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${r.dot}`} />
                 <p className="font-semibold truncate">{r.label}</p>
+                {r.assessable && buyingPower && (
+                  <span className={`chip shrink-0 ${
+                    buyingPower.content
+                      ? 'bg-brand-100 text-brand-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {buyingPower.content ? '😊 Content' : '🎯 Level up'}
+                  </span>
+                )}
               </div>
               <div className="text-right">
                 <p className={`font-display font-extrabold ${r.warn ? 'text-red-600' : ''}`}>
@@ -733,9 +746,36 @@ function ContributionsCard({ profile, updateSection }) {
                 </span>
               </div>
             )}
+
+            {r.assessable && (
+              <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-[11px] text-ink-400">
+                  {buyingPower
+                    ? `Last check: ${buyingPower.avg.toFixed(1)} / 10 average.`
+                    : 'Not sure if this is enough? Run a quick check.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAssessingBuyingPower(true)}
+                  className="btn-secondary !py-1.5 !px-3 text-xs border-grape-200 text-grape-700 hover:bg-grape-50"
+                >
+                  {buyingPower ? 'Re-assess buying power' : 'Assess buying power'}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
+
+      {assessingBuyingPower && (
+        <BuyingPowerModal
+          initial={buyingPower}
+          onClose={() => setAssessingBuyingPower(false)}
+          onSave={(assessment) =>
+            updateSection('finances', { buyingPowerAssessment: assessment })
+          }
+        />
+      )}
     </div>
   )
 }

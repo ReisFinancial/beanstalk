@@ -31,6 +31,10 @@ const emptyProfile = {
     },
     monthlyExpenses: '',
     bareNecessities: '', // fixed monthly expenditures (rent, utilities, etc.)
+    // Self-assessment of how content the user is with their discretionary
+    // spending power. Set by the BuyingPowerModal on the Money page.
+    // Shape: { ratings: {key: 0-10}, avg, content: boolean, assessedAt: ISO }
+    buyingPowerAssessment: null,
     liquidAssets: '',
     investments: '',
     realEstate: '',

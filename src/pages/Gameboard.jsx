@@ -1232,6 +1232,7 @@ function GameboardInner({ profile }) {
         <IncomeDisclosureModal
           currentTotal={profile.finances?.monthlyIncome}
           currentSources={profile.finances?.incomeSources}
+          bareNecessities={profile.finances?.bareNecessities}
           addedIncome={addedIncome}
           assetContributions={assetContributions}
           liabilityPayments={liabilityPayments}
@@ -1691,7 +1692,7 @@ function ActionStep({ step, index, onToggle, onRemove }) {
 // (Portrait vectors, future budget caps) can read a single source of
 // truth instead of re-deriving income from contribution sums.
 function IncomeDisclosureModal({
-  currentTotal, currentSources, addedIncome = 0,
+  currentTotal, currentSources, bareNecessities = 0, addedIncome = 0,
   assetContributions = 0, liabilityPayments = 0,
   country, onClose, onSave,
 }) {
@@ -1732,9 +1733,10 @@ function IncomeDisclosureModal({
   const incomeAmt   = emp + selfEmp + biz
   const added       = Number(addedIncome) || 0
   const totalIncome = incomeAmt + added
+  const necessities = Number(bareNecessities) || 0
   const assets      = Number(assetContributions) || 0
   const liabilities = Number(liabilityPayments)  || 0
-  const allocated   = assets + liabilities
+  const allocated   = necessities + assets + liabilities
   const remaining   = totalIncome - allocated
   const overAllocated = totalIncome > 0 && allocated > totalIncome
 
@@ -1835,6 +1837,7 @@ function IncomeDisclosureModal({
                     tone="good"
                   />
                 )}
+                <Row label="Bare necessities"             value={`− ${fmtMoney(necessities)}`} />
                 <Row label="Going to asset contributions" value={`− ${fmtMoney(assets)}`} />
                 <Row label="Going to debt payments"       value={`− ${fmtMoney(liabilities)}`} />
                 <div className="border-t border-slate-200 my-1" />
