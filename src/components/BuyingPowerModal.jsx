@@ -18,17 +18,60 @@ export const BUYING_POWER_QUESTIONS = [
     question: 'Do you have headroom to expand your spending if you wanted to?' },
 ]
 
-const CONTENTMENT_THRESHOLD = 7 // average ≥ 7/10 reads as "content"
+// Three-tier verdict on a 10-point average:
+//   ≥ 8     → content       (you're happy where you sit)
+//   ≥ 5     → underutilized (you have headroom you're not using)
+//   else    → levelUp       (constrained — work on income/budget)
+const TIER_THRESHOLDS = { content: 8, underutilized: 5 }
+
+export function buyingPowerTier(avg) {
+  const a = Number(avg) || 0
+  if (a >= TIER_THRESHOLDS.content) return 'content'
+  if (a >= TIER_THRESHOLDS.underutilized) return 'underutilized'
+  return 'levelUp'
+}
+
+export const BUYING_POWER_TIER_META = {
+  content: {
+    emoji: '😊',
+    title: "You're content",
+    headerSub: "You're happy with where your buying power sits.",
+    cardBg: 'bg-brand-50 border-brand-200',
+    text: 'text-brand-700',
+    chip: 'bg-brand-100 text-brand-700',
+    chipShort: '😊 Content',
+  },
+  underutilized: {
+    emoji: '🤔',
+    title: 'Not fully utilizing buying power',
+    headerSub: 'You have headroom — consider being a little more generous.',
+    cardBg: 'bg-sky-50 border-sky-200',
+    text: 'text-sky-700',
+    chip: 'bg-sky-100 text-sky-700',
+    chipShort: '🤔 Underutilized',
+  },
+  levelUp: {
+    emoji: '🎯',
+    title: 'Time to level up',
+    headerSub: 'Your buying power is constrained — time to expand it.',
+    cardBg: 'bg-amber-50 border-amber-200',
+    text: 'text-amber-700',
+    chip: 'bg-amber-100 text-amber-700',
+    chipShort: '🎯 Level up',
+  },
+}
 
 export function computeBuyingPowerVerdict(ratings = {}) {
   const vals = BUYING_POWER_QUESTIONS.map((q) => Number(ratings[q.id]) || 0)
   const total = vals.reduce((s, v) => s + v, 0)
   const avg = total / vals.length
+  const tier = buyingPowerTier(avg)
   return {
     avg,
     score: total,
     max: vals.length * 10,
-    content: avg >= CONTENTMENT_THRESHOLD,
+    tier,
+    content: tier === 'content', // legacy field — kept for downstream readers
   }
 }
 
@@ -58,12 +101,14 @@ export default function BuyingPowerModal({ initial, onClose, onSave }) {
   }, [onClose])
 
   const verdict = computeBuyingPowerVerdict(ratings)
+  const tierMeta = BUYING_POWER_TIER_META[verdict.tier]
 
   const save = () => {
     onSave({
       ratings,
       avg: verdict.avg,
-      content: verdict.content,
+      tier: verdict.tier,
+      content: verdict.content, // legacy field — kept for downstream readers
       assessedAt: new Date().toISOString(),
     })
     onClose()
@@ -88,9 +133,7 @@ export default function BuyingPowerModal({ initial, onClose, onSave }) {
             <p className="text-sm text-ink-500 mt-0.5">
               {step === 'questions'
                 ? 'Rate each prompt on a 0–10 scale.'
-                : verdict.content
-                  ? "You're content with where you sit."
-                  : 'Time to level up your buying power.'}
+                : tierMeta.headerSub}
             </p>
           </div>
           <button
@@ -116,25 +159,28 @@ export default function BuyingPowerModal({ initial, onClose, onSave }) {
           </div>
         ) : (
           <div className="mt-5 space-y-4">
-            <div className={`rounded-2xl p-4 text-center ${
-              verdict.content
-                ? 'bg-brand-50 border border-brand-200'
-                : 'bg-amber-50 border border-amber-200'
-            }`}>
-              <div className="text-4xl">{verdict.content ? '😊' : '🎯'}</div>
-              <p className={`mt-2 font-display text-lg font-extrabold ${
-                verdict.content ? 'text-brand-700' : 'text-amber-700'
-              }`}>
-                {verdict.content
-                  ? "You're content"
-                  : 'Time to level up'}
+            <div className={`rounded-2xl border p-4 text-center ${tierMeta.cardBg}`}>
+              <div className="text-4xl">{tierMeta.emoji}</div>
+              <p className={`mt-2 font-display text-lg font-extrabold ${tierMeta.text}`}>
+                {tierMeta.title}
               </p>
               <p className="text-xs text-ink-500 mt-1">
                 Score {verdict.score} of {verdict.max} · {verdict.avg.toFixed(1)} / 10 average
               </p>
             </div>
 
-            {!verdict.content && (
+            {verdict.tier === 'underutilized' && (
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <p className="text-sm font-bold mb-2">Consider this</p>
+                <ul className="text-sm text-ink-500 space-y-1.5">
+                  <li>· Treat yourself a bit more often — guilt-free.</li>
+                  <li>· Upgrade the quality of things you buy regularly.</li>
+                  <li>· Try a new experience or hobby you've been putting off.</li>
+                </ul>
+              </div>
+            )}
+
+            {verdict.tier === 'levelUp' && (
               <div className="rounded-2xl border border-slate-200 p-4">
                 <p className="text-sm font-bold mb-2">Ways to level up</p>
                 <ul className="text-sm text-ink-500 space-y-1.5">

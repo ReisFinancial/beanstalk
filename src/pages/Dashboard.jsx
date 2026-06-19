@@ -6,7 +6,7 @@ import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../components/PrioritizeGoalsModal.jsx'
-import BuyingPowerModal from '../components/BuyingPowerModal.jsx'
+import BuyingPowerModal, { buyingPowerTier, BUYING_POWER_TIER_META } from '../components/BuyingPowerModal.jsx'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
 
@@ -707,15 +707,16 @@ function ContributionsCard({ profile, updateSection }) {
               <div className="flex items-center gap-2 min-w-0">
                 <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${r.dot}`} />
                 <p className="font-semibold truncate">{r.label}</p>
-                {r.assessable && buyingPower && (
-                  <span className={`chip shrink-0 ${
-                    buyingPower.content
-                      ? 'bg-brand-100 text-brand-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {buyingPower.content ? '😊 Content' : '🎯 Level up'}
-                  </span>
-                )}
+                {r.assessable && buyingPower && (() => {
+                  const tierMeta = BUYING_POWER_TIER_META[
+                    buyingPower.tier || buyingPowerTier(buyingPower.avg)
+                  ]
+                  return (
+                    <span className={`chip shrink-0 ${tierMeta.chip}`}>
+                      {tierMeta.chipShort}
+                    </span>
+                  )
+                })()}
               </div>
               <div className="text-right">
                 <p className={`font-display font-extrabold ${r.warn ? 'text-red-600' : ''}`}>
