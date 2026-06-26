@@ -18,12 +18,14 @@ const CLASSIFICATIONS = [
 // Subtypes line up with the rate fields on the Money page so each hex
 // can look up its own ROI / interest rate.
 const ASSET_SUBTYPES = [
-  { id: 'savings',     label: 'Savings' },
-  { id: 'retirement',  label: 'Retirement' },
-  { id: 'investments', label: 'Investments' },
-  { id: 'realEstate',  label: 'Real estate' },
-  { id: 'crypto',      label: 'Crypto' },
-  { id: 'vehicle',     label: 'Vehicle / car' },
+  { id: 'savings',      label: 'Savings' },
+  { id: 'retirement',   label: 'Retirement' },
+  { id: 'investments',  label: 'Investments' },
+  { id: 'realEstate',   label: 'Real estate' },
+  { id: 'crypto',       label: 'Crypto' },
+  { id: 'vehicle',      label: 'Vehicle / car' },
+  { id: 'stockOptions', label: 'Stock options' },
+  { id: 'pension',      label: 'Company pension' },
 ]
 const LIABILITY_SUBTYPES = [
   { id: 'creditCard',   label: 'Credit card' },
@@ -91,6 +93,24 @@ export default function AddItemModal({
   const [monthlyPayment, setMonthlyPayment] = useState(
     initialValue?.monthlyPayment !== undefined && initialValue.monthlyPayment !== null
       ? String(initialValue.monthlyPayment)
+      : '',
+  )
+  // Stock options carry their own projected ROI instead of using the type
+  // rate from the Money page.
+  const [customRate, setCustomRate] = useState(
+    initialValue?.customRate !== undefined && initialValue.customRate !== null
+      ? String(initialValue.customRate)
+      : '',
+  )
+  // Pension-only — age the annuity begins + forecasted annual annuity.
+  const [retirementAge, setRetirementAge] = useState(
+    initialValue?.retirementAge !== undefined && initialValue.retirementAge !== null
+      ? String(initialValue.retirementAge)
+      : '',
+  )
+  const [annualAnnuity, setAnnualAnnuity] = useState(
+    initialValue?.annualAnnuity !== undefined && initialValue.annualAnnuity !== null
+      ? String(initialValue.annualAnnuity)
       : '',
   )
   // Asset/liability-only — picks which rate category applies
@@ -176,7 +196,20 @@ export default function AddItemModal({
       if (!Number.isFinite(amt) || amt < 0) return
       const pmt = monthlyPayment === '' ? 0 : Number(monthlyPayment)
       if (!Number.isFinite(pmt) || pmt < 0) return
-      onSubmit(type, { label: trimmed, amount: amt, subtype, monthlyPayment: pmt })
+      const payload = { label: trimmed, amount: amt, subtype, monthlyPayment: pmt }
+      // Stock options: per-asset ROI overrides the Money-page type rate.
+      if (type === 'asset' && subtype === 'stockOptions') {
+        const r = Number(customRate)
+        payload.customRate = Number.isFinite(r) && r >= 0 ? r : null
+      }
+      // Pension: retirement age + forecasted annual annuity feed projection logic.
+      if (type === 'asset' && subtype === 'pension') {
+        const ra = Number(retirementAge)
+        const aa = Number(annualAnnuity)
+        payload.retirementAge = Number.isFinite(ra) && ra > 0 ? Math.round(ra) : null
+        payload.annualAnnuity = Number.isFinite(aa) && aa >= 0 ? aa : 0
+      }
+      onSubmit(type, payload)
     }
   }
 
@@ -321,6 +354,83 @@ export default function AddItemModal({
                   ))}
                 </div>
               </div>
+
+              {/* Stock options — per-asset projected ROI overrides the Money rate */}
+              {type === 'asset' && subtype === 'stockOptions' && (
+                <div>
+                  <label className="label" htmlFor="item-roi">
+                    Projected ROI
+                    <span className="text-ink-400 font-normal ml-1">(per year)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="item-roi"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      min="0"
+                      className="input pr-10"
+                      placeholder="e.g. 12"
+                      value={customRate}
+                      onChange={(e) => setCustomRate(e.target.value)}
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 font-semibold">%</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-400">
+                    Annual return you expect on these options. Used for projections only.
+                  </p>
+                </div>
+              )}
+
+              {/* Pension — retirement age + forecasted annual annuity */}
+              {type === 'asset' && subtype === 'pension' && (
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                    Pension details
+                  </p>
+                  <div>
+                    <label className="label" htmlFor="pension-retire">Retirement age</label>
+                    <div className="relative max-w-[180px]">
+                      <input
+                        id="pension-retire"
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        max="120"
+                        step="1"
+                        className="input pr-14 bg-white"
+                        placeholder="e.g. 65"
+                        value={retirementAge}
+                        onChange={(e) => setRetirementAge(e.target.value)}
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="pension-annuity">
+                      Forecasted annual annuity at retirement
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+                      <input
+                        id="pension-annuity"
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="1"
+                        className="input pl-8 pr-12 bg-white"
+                        placeholder="e.g. 36000"
+                        value={annualAnnuity}
+                        onChange={(e) => setAnnualAnnuity(e.target.value)}
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">/yr</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-ink-400">
+                      Income stream that begins once you reach the retirement age above.
+                    </p>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

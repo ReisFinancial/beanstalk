@@ -19,10 +19,12 @@ function inferSubtype(type, label) {
   const s = (label || '').toLowerCase()
   if (type === 'asset') {
     if (/saving|chequing|checking|\bcash\b/.test(s)) return 'savings'
-    if (/retire|rrsp|401|pension/.test(s))           return 'retirement'
+    if (/pension/.test(s))                            return 'pension'
+    if (/retire|rrsp|401/.test(s))                    return 'retirement'
     if (/real estate|property|home equity|house/.test(s)) return 'realEstate'
     if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
     if (/\bcar\b|\bauto\b|vehicle|truck|motorcycle/.test(s)) return 'vehicle'
+    if (/stock option|\brsu\b|\beso\b/.test(s))      return 'stockOptions'
     return 'investments'
   }
   if (/credit card|visa|master|amex/.test(s))        return 'creditCard'
@@ -34,8 +36,19 @@ function inferSubtype(type, label) {
 }
 
 function annualRatePct(type, item, rates) {
+  // Per-asset override wins — used by stockOptions (and any future
+  // "user sets their own ROI" subtype).
+  if (type === 'asset' && item?.customRate !== undefined && item.customRate !== null && item.customRate !== '') {
+    const r = Number(item.customRate)
+    if (Number.isFinite(r)) return r
+  }
   const scope = type === 'asset' ? 'asset' : 'liability'
   const key   = item.subtype || inferSubtype(type, item.label)
+  // Pension assets fall back to the retirement rate so the user doesn't
+  // need to set yet another Money-page field.
+  if (type === 'asset' && key === 'pension') {
+    return Number(rates?.asset?.retirement) || 0
+  }
   return Number(rates?.[scope]?.[key]) || 0
 }
 
@@ -1125,6 +1138,9 @@ function SnapshotView({
             periods={periods} setPeriods={setPeriods}
             projectedNet={netWorth}
             currentAge={profile.personal?.age}
+            pensionAssets={assets.filter(
+              (a) => (a.subtype || inferSubtype('asset', a.label)) === 'pension',
+            )}
           />
           <WealthLevelCard netWorth={netWorth} />
         </div>
@@ -1156,7 +1172,10 @@ function SnapshotView({
 }
 
 // Slider that drives the future-value projection across every hex.
-function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet, currentAge }) {
+function ProjectionSlider({
+  unit, setUnit, periods, setPeriods,
+  projectedNet, currentAge, pensionAssets = [],
+}) {
   const max = unit === 'months' ? 60 : 40
   const suffix = unit === 'months' ? 'mo' : (periods === 1 ? 'yr' : 'yrs')
   // Project the user's age at the slider's current position so the user
@@ -1167,6 +1186,16 @@ function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet, cu
   const ageSuffix = projectedAge != null ? ` (age ${projectedAge})` : ''
   const base = periods === 0 ? 'Today' : `${periods} ${suffix}`
   const label = `${base}${ageSuffix}`
+
+  // Pension annuity income — sums every pension whose retirement age the
+  // projection has crossed. Shows as an extra cash inflow line so the
+  // user sees the income stream alongside the net-worth number.
+  const annuityNow = pensionAssets.reduce((s, p) => {
+    const ra = Number(p.retirementAge) || Infinity
+    const aa = Number(p.annualAnnuity) || 0
+    if (projectedAge != null && projectedAge >= ra) return s + aa
+    return s
+  }, 0)
 
   const switchUnit = (next) => {
     if (next === unit) return
@@ -1215,6 +1244,17 @@ function ProjectionSlider({ unit, setUnit, periods, setPeriods, projectedNet, cu
           </span>
         </span>
       </div>
+
+      {annuityNow > 0 && (
+        <div className="mt-2 flex items-baseline justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+            Pension annuity income
+          </span>
+          <span className="font-display text-sm font-extrabold text-brand-700">
+            + {fmtMoney(annuityNow)} / yr
+          </span>
+        </div>
+      )}
 
       <input
         type="range"

@@ -23,6 +23,7 @@ const MAX_MONTHS = 360 // 30-year horizon
 const ASSET_ICON = {
   savings: '🏦', retirement: '🏖️', investments: '📈',
   realEstate: '🏠', crypto: '🪙', vehicle: '🚗',
+  stockOptions: '📊', pension: '💼',
 }
 const LIABILITY_ICON = {
   creditCard: '💳', lineOfCredit: '🧾', overdueBills: '⏰',
@@ -40,10 +41,12 @@ function inferSubtype(type, label) {
   const s = (label || '').toLowerCase()
   if (type === 'asset') {
     if (/saving|chequing|checking|\bcash\b/.test(s)) return 'savings'
-    if (/retire|rrsp|401|pension/.test(s))           return 'retirement'
+    if (/pension/.test(s))                            return 'pension'
+    if (/retire|rrsp|401/.test(s))                    return 'retirement'
     if (/real estate|property|home equity|house/.test(s)) return 'realEstate'
     if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
     if (/\bcar\b|\bauto\b|vehicle|truck|motorcycle/.test(s)) return 'vehicle'
+    if (/stock option|\brsu\b|\beso\b/.test(s))      return 'stockOptions'
     return 'investments'
   }
   if (/credit card|visa|master|amex/.test(s))        return 'creditCard'
@@ -54,8 +57,17 @@ function inferSubtype(type, label) {
   return 'creditCard'
 }
 function annualRatePct(type, item, rates) {
+  // Per-asset override wins (e.g., stockOptions ROI set in AddItemModal).
+  if (type === 'asset' && item?.customRate !== undefined && item.customRate !== null && item.customRate !== '') {
+    const r = Number(item.customRate)
+    if (Number.isFinite(r)) return r
+  }
   const scope = type === 'asset' ? 'asset' : 'liability'
   const key   = item.subtype || inferSubtype(type, item.label)
+  // Pension assets compound at the retirement rate from the Money page.
+  if (type === 'asset' && key === 'pension') {
+    return Number(rates?.asset?.retirement) || 0
+  }
   return Number(rates?.[scope]?.[key]) || 0
 }
 
