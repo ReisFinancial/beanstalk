@@ -303,7 +303,7 @@ function GameboardInner({ profile }) {
   const liquidValue = assetTiles
     .filter((a) => a.subtype === 'savings' || a.subtype === 'investments' || a.subtype === 'crypto')
     .reduce((s, a) => s + assetValueAt(a, month), 0)
-  const passiveIncome = assetTiles
+  const interestPassive = assetTiles
     .filter((a) =>
       a.subtype === 'savings' || a.subtype === 'investments' ||
       a.subtype === 'crypto'  || a.subtype === 'retirement',
@@ -313,6 +313,25 @@ function GameboardInner({ profile }) {
   // Foundation = 10 years of income + the full estate value (assets).
   const monthlyIncomeAfterTax = Number(profile.finances?.monthlyIncome) || 0
   const foundationAmount = monthlyIncomeAfterTax * 12 * 10 + liveAssets
+
+  // ── Pension annuity income ──────────────────────────────────────────
+  // Once the user's projected age crosses a pension's retirement age,
+  // its forecasted annual annuity starts flowing as monthly income.
+  // Multiple pensions are summed.
+  const activePensions = (profile.assets || []).filter((a) => {
+    const sub = a.subtype || inferSubtype('asset', a.label)
+    if (sub !== 'pension') return false
+    const ra = Number(a.retirementAge)
+    if (!Number.isFinite(ra) || ra <= 0) return false
+    return projectedAge != null && projectedAge >= ra
+  })
+  const pensionAnnualIncome  = activePensions.reduce(
+    (s, p) => s + (Number(p.annualAnnuity) || 0), 0,
+  )
+  const pensionMonthlyIncome = pensionAnnualIncome / 12
+
+  // Total passive income = interest earned + pension annuity (post-retirement).
+  const passiveIncome = interestPassive + pensionAnnualIncome
 
   // Countdown = years until the next wealth band, projected linearly off
   // current annual growth (returns + contributions − liability interest).
@@ -1246,6 +1265,7 @@ function GameboardInner({ profile }) {
           currentSources={profile.finances?.incomeSources}
           bareNecessities={profile.finances?.bareNecessities}
           addedIncome={addedIncome}
+          pensionMonthlyIncome={pensionMonthlyIncome}
           assetContributions={assetContributions}
           liabilityPayments={liabilityPayments}
           country={profile.personal?.country}
@@ -1705,6 +1725,7 @@ function ActionStep({ step, index, onToggle, onRemove }) {
 // truth instead of re-deriving income from contribution sums.
 function IncomeDisclosureModal({
   currentTotal, currentSources, bareNecessities = 0, addedIncome = 0,
+  pensionMonthlyIncome = 0,
   assetContributions = 0, liabilityPayments = 0,
   country, onClose, onSave,
 }) {
@@ -1744,7 +1765,8 @@ function IncomeDisclosureModal({
   const biz     = Number(business)       || 0
   const incomeAmt   = emp + selfEmp + biz
   const added       = Number(addedIncome) || 0
-  const totalIncome = incomeAmt + added
+  const pension     = Number(pensionMonthlyIncome) || 0
+  const totalIncome = incomeAmt + added + pension
   const necessities = Number(bareNecessities) || 0
   const assets      = Number(assetContributions) || 0
   const liabilities = Number(liabilityPayments)  || 0
@@ -1846,6 +1868,13 @@ function IncomeDisclosureModal({
                   <Row
                     label="Added income (powerup)"
                     value={`+ ${fmtMoney(added)}`}
+                    tone="good"
+                  />
+                )}
+                {pension > 0 && (
+                  <Row
+                    label="Pension annuity"
+                    value={`+ ${fmtMoney(pension)}`}
                     tone="good"
                   />
                 )}
