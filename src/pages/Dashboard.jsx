@@ -7,6 +7,7 @@ import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../components/PrioritizeGoalsModal.jsx'
 import BuyingPowerModal, { buyingPowerTier, BUYING_POWER_TIER_META } from '../components/BuyingPowerModal.jsx'
+import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
 
@@ -110,7 +111,8 @@ function targetAgeLabel(goal, currentAge) {
     const yrs = t - a
     if (yrs <= 0) return `By age ${t} · now`
     if (yrs < 1)  return `By age ${t} · ${Math.round(yrs * 12)} mo away`
-    return `By age ${t} · ${yrs === 1 ? '1 yr' : `${yrs} yrs`} away`
+    const yrsRounded = Math.round(yrs)
+    return `By age ${t} · ${yrsRounded === 1 ? '1 yr' : `${yrsRounded} yrs`} away`
   }
   return `By age ${t}`
 }
@@ -500,7 +502,20 @@ export default function Dashboard() {
             </div>
           </div>
           <dl className="mt-6 grid gap-3 sm:grid-cols-2 text-sm">
-            <Info k="Age" v={profile.personal.age ? `${profile.personal.age} yrs` : ''} />
+            <Info
+              k="Age"
+              v={(() => {
+                const a = ageFromPersonal(profile.personal)
+                const m = Number(profile.personal.birthMonth)
+                const y = Number(profile.personal.birthYear)
+                const dob = Number.isFinite(m) && m >= 1 && m <= 12 && Number.isFinite(y) && y > 0
+                  ? `${MONTH_NAMES[m - 1]} ${y}`
+                  : null
+                if (a == null && !dob) return ''
+                if (dob && a != null) return `${Math.floor(a)} yrs (${dob})`
+                return a != null ? `${Math.floor(a)} yrs` : dob
+              })()}
+            />
             <Info k="Life stage" v={
               Array.isArray(profile.personal.lifeStage)
                 ? (profile.personal.lifeStage.length ? profile.personal.lifeStage.join(', ') : '')
@@ -553,7 +568,7 @@ export default function Dashboard() {
         {topGoals.length === 0 ? <EmptyGoals /> : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {topGoals.slice(0, 3).map((g, i) => (
-              <GoalCard key={g.id} goal={g} rank={i + 1} currentAge={profile.personal.age} />
+              <GoalCard key={g.id} goal={g} rank={i + 1} currentAge={ageFromPersonal(profile.personal)} />
             ))}
           </div>
         )}
@@ -1137,7 +1152,7 @@ function SnapshotView({
             unit={unit} setUnit={setUnit}
             periods={periods} setPeriods={setPeriods}
             projectedNet={netWorth}
-            currentAge={profile.personal?.age}
+            currentAge={ageFromPersonal(profile.personal)}
             pensionAssets={assets.filter(
               (a) => (a.subtype || inferSubtype('asset', a.label)) === 'pension',
             )}
@@ -1333,7 +1348,7 @@ function GoalsView({ profile, setPriorities }) {
 
   // Readiness checks — each row in the prep checklist lights up green
   // when satisfied, so the user knows what to fix before they start.
-  const currentAge      = Number(profile.personal?.age) || null
+  const currentAge      = ageFromPersonal(profile.personal)
   const targetAgesSet   = goals.filter(
     (g) => Number.isFinite(Number(g.targetAge)) && Number(g.targetAge) > 0,
   ).length

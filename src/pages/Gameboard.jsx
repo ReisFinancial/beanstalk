@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
+import { ageFromPersonal } from '../utils/age.js'
 
 /* ----------------------------------------------------------------------
    Net Worth Arena — a sandbox strategy board.
@@ -282,9 +283,11 @@ function GameboardInner({ profile }) {
   const netWorth = liveAssets - liveDebt
 
   // Project the user's age at the current timeline position so every
-  // timeline display can show "(age X)" alongside the duration.
-  const ageNow = Number(profile.personal?.age) || null
-  const projectedAge = ageNow ? Math.floor(ageNow + month / 12) : null
+  // timeline display can show "(age X)" alongside the duration. Age is
+  // a fractional value derived from birth month/year (or the legacy age
+  // field) so birthdays land on the right month, not just the right year.
+  const ageNow = ageFromPersonal(profile.personal)
+  const projectedAge = ageNow != null ? Math.floor(ageNow + month / 12) : null
   const ageSuffix = projectedAge != null ? ` (age ${projectedAge})` : ''
 
   // ── Shared cashflow + portrait math ─────────────────────────────────

@@ -9,7 +9,13 @@ const emptyProfile = {
   completedWizard: false,
   personal: {
     fullName: '',
-    age: '', // numeric age — enables milestone-age goals later
+    // Birth date drives age-anchored forecasts. We keep both pieces as
+    // strings for controlled-input consistency; helpers in utils/age
+    // derive the live age. `age` stays as a legacy fallback for profiles
+    // that haven't migrated yet.
+    birthMonth: '', // '1'..'12'
+    birthYear: '',  // four-digit year, e.g. '1992'
+    age: '',        // legacy — used only if birth date isn't set
     lifeStage: [], // multi-select — array of stage labels
     country: '',   // 'CA' | 'US'
     region: '',    // province (CA) or state (US)

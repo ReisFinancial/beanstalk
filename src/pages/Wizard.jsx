@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import BeanstalkMark from '../components/BeanstalkMark.jsx'
+import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 
 const STEPS = [
   { id: 'welcome',    title: 'Welcome',     emoji: '👋' },
@@ -171,26 +172,42 @@ function StepPersonal({ profile, updateSection }) {
       <p className="mt-1 text-ink-500 text-sm">This helps us tune the dashboard. Nothing is mandatory.</p>
       <div className="mt-6 space-y-5">
         <div>
-          <label className="label" htmlFor="age">Age</label>
-          <div className="relative max-w-[180px]">
+          <label className="label">Birth date</label>
+          <div className="flex gap-2 max-w-md">
+            <select
+              aria-label="Birth month"
+              className="input flex-1"
+              value={profile.personal.birthMonth ?? ''}
+              onChange={(e) =>
+                updateSection('personal', { birthMonth: e.target.value })
+              }
+            >
+              <option value="">Month</option>
+              {[
+                'January','February','March','April','May','June',
+                'July','August','September','October','November','December',
+              ].map((m, i) => (
+                <option key={m} value={String(i + 1)}>{m}</option>
+              ))}
+            </select>
             <input
-              id="age"
+              aria-label="Birth year"
               type="number"
               inputMode="numeric"
-              min="0"
-              max="120"
+              min="1900"
+              max={new Date().getFullYear()}
               step="1"
-              className="input pr-14"
-              placeholder="e.g. 32"
-              value={profile.personal.age ?? ''}
+              className="input w-32"
+              placeholder="Year"
+              value={profile.personal.birthYear ?? ''}
               onChange={(e) =>
-                updateSection('personal', { age: e.target.value })
+                updateSection('personal', { birthYear: e.target.value })
               }
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
           </div>
           <p className="mt-1 text-[11px] text-ink-400">
-            We use this to anchor milestone-age goals (e.g. "Hit $1M by 50").
+            Month + year so age-anchored forecasts (milestones, pension
+            kick-in) shift on the right month — not just the right year.
           </p>
         </div>
         <div>
@@ -656,7 +673,10 @@ function StepReview({ profile }) {
         <div className="card">
           <h3 className="font-bold">About you</h3>
           <p className="text-sm text-ink-500 mt-1">
-            {profile.personal.fullName || 'Anonymous'} · {profile.personal.age ? `${profile.personal.age} yrs` : '—'} · {stageLabel}
+            {profile.personal.fullName || 'Anonymous'} · {(() => {
+              const a = ageFromPersonal(profile.personal)
+              return a != null ? `${Math.floor(a)} yrs` : '—'
+            })()} · {stageLabel}
             {locLabel ? ` · ${locLabel}` : ''}
           </p>
         </div>
