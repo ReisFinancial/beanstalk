@@ -17,7 +17,7 @@ const navItems = [
   { key: 'snapshot', to: '/dashboard?view=snapshot',  label: 'Snapshot',  icon: '🔷' },
   { key: 'goals',    to: '/dashboard?view=goals',     label: 'Goals',     icon: '🎯' },
   { key: 'money',    to: '/dashboard?view=money',     label: 'Money',     icon: '💸' },
-  { key: 'play',     to: '/gameboard',                label: 'Play',      icon: '🎮' },
+  { key: 'play',     to: '/play',                     label: 'Play',      icon: '🌱' },
   { key: 'profile',  to: '/dashboard?view=profile',   label: 'Profile',   icon: '🙂' },
 ]
 
@@ -29,11 +29,13 @@ export default function Layout() {
   const [searchParams] = useSearchParams()
 
   const onDashboard = location.pathname === '/dashboard'
-  const onGameboard = location.pathname === '/gameboard'
+  // Sandbox (Gameboard) is reached via a link inside the Play page, so it
+  // still counts as "Play" for nav highlighting purposes.
+  const onPlay = location.pathname === '/play' || location.pathname === '/gameboard'
   const currentView = searchParams.get('view') || 'home'
 
   const isActive = (key) => {
-    if (key === 'play') return onGameboard
+    if (key === 'play') return onPlay
     return onDashboard && currentView === key
   }
 

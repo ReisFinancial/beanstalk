@@ -72,6 +72,17 @@ input[type='number'] {
   }
 }
 
+/* Applied around the Room when reduced motion is resolved on (see
+   hooks/useReducedMotion.js) — a blanket override rather than threading a
+   boolean prop through every component, so future animations added
+   anywhere inside automatically respect it. */
+.motion-reduce-scope,
+.motion-reduce-scope * {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
 /* -------------------------------------------------------------------------
    Honeycomb layout — tightly-packed pointy-top hexagons with no gap.
 

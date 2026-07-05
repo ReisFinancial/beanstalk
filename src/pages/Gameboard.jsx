@@ -1322,13 +1322,21 @@ function GameboardInner({ profile }) {
 
 function Header() {
   return (
-    <div>
-      <h2 className="font-display text-2xl font-extrabold tracking-tight">
-        🎮 Net Worth Arena
-      </h2>
-      <p className="text-sm text-ink-500 mt-0.5">
-        Turn your finances into a board. Capture every debt and goal with your assets.
-      </p>
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 className="font-display text-2xl font-extrabold tracking-tight">
+          🎮 Net Worth Arena
+        </h2>
+        <p className="text-sm text-ink-500 mt-0.5">
+          Turn your finances into a board. Capture every debt and goal with your assets.
+        </p>
+      </div>
+      <Link
+        to="/play"
+        className="chip bg-white shadow-soft text-ink-700 hover:bg-slate-50 shrink-0"
+      >
+        🌱 Room
+      </Link>
     </div>
   )
 }

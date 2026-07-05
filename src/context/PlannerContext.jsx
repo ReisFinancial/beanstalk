@@ -73,6 +73,23 @@ const emptyProfile = {
   preferences: {
     focusArea: '', // money | career | health | relationships | learning
   },
+  // Cozy Play-section state — see IMMERSIVE_GAMEPLAY.md. `items` holds
+  // everything unlocked; `placed` distinguishes room décor from inventory.
+  room: {
+    // baselineNetWorth/updatedAt anchor the season comparison in utils/room.js
+    // — season only re-checks every few days so it doesn't flap on daily noise.
+    season: { current: 'spring', source: 'auto', updatedAt: null, baselineNetWorth: null },
+    carePoints: 0,
+    streak: { current: 0, longest: 0, lastVisitDate: null }, // lastVisitDate: 'YYYY-MM-DD'
+    items: [], // { id, kind: 'plant'|'decor'|'pet'|'food', speciesId, sourceGoalId?,
+               //   unlockedAt, placed, slotId, lastTendedAt }
+    // What's already been granted, so utils/room.js#unlocksFromMilestones can
+    // detect *new* milestones without re-granting the same one twice.
+    milestones: { goalIds: [], wealthLevel: -1, petStreak: 0 },
+    settings: {
+      reducedMotion: 'system', // 'system' | 'on' | 'off'
+    },
+  },
 }
 
 function readProfiles() {
@@ -97,7 +114,11 @@ export function PlannerProvider({ children }) {
       return
     }
     const all = readProfiles()
-    setProfile(all[user.id] || { ...emptyProfile })
+    const saved = all[user.id]
+    // Shallow-merge over emptyProfile so top-level sections added after a
+    // profile was first saved (e.g. `room`) backfill instead of being
+    // undefined for existing users.
+    setProfile(saved ? { ...emptyProfile, ...saved } : { ...emptyProfile })
   }, [user])
 
   // Persist whenever the profile changes
@@ -236,6 +257,127 @@ export function PlannerProvider({ children }) {
     })
   }, [])
 
+  // ── Room (cozy Play view) ─────────────────────────────────────────────
+  // Advances the visit streak once per calendar day. A gap of more than a
+  // day resets rather than escalating a "penalty" — neglect here is meant
+  // to be gentle, never a game-over state.
+  const recordVisit = useCallback(() => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      const room = base.room || emptyProfile.room
+      const today = new Date().toISOString().slice(0, 10)
+      const last = room.streak?.lastVisitDate
+      if (last === today) return base // already recorded today
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+      const current = last === yesterday ? (room.streak?.current || 0) + 1 : 1
+      const longest = Math.max(current, room.streak?.longest || 0)
+      return {
+        ...base,
+        room: { ...room, streak: { current, longest, lastVisitDate: today } },
+      }
+    })
+  }, [])
+
+  // Tending resets an item's decay clock. Visual "care level" is derived
+  // from lastTendedAt at read time (utils/room.js) rather than stored, so
+  // it can't drift out of sync with the clock that actually drives it.
+  const tendItem = useCallback((id) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      const room = prev.room || emptyProfile.room
+      return {
+        ...prev,
+        room: {
+          ...room,
+          items: (room.items || []).map((it) =>
+            it.id === id ? { ...it, lastTendedAt: new Date().toISOString() } : it,
+          ),
+        },
+      }
+    })
+  }, [])
+
+  // Unlock a new plant/decor/pet/food item into inventory (unplaced). Goal-
+  // or streak-triggered unlocks are minted here; spending care points to
+  // place them is the separate micro-economy step (buyRoomItem).
+  const unlockRoomItem = useCallback((item) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      const room = base.room || emptyProfile.room
+      const now = new Date().toISOString()
+      const next = {
+        id: crypto.randomUUID(),
+        placed: false,
+        slotId: null,
+        unlockedAt: now,
+        lastTendedAt: now,
+        ...item,
+      }
+      return { ...base, room: { ...room, items: [...(room.items || []), next] } }
+    })
+  }, [])
+
+  // Spend care points to place (or rearrange) an owned item. Cost comes
+  // from the room catalog at call time, not stored on the item, so prices
+  // can be tuned later without migrating saved profiles. A no-op (silently
+  // does nothing) if the balance is too low — callers should disable the
+  // buy action first using profile.room.carePoints.
+  const buyRoomItem = useCallback((id, cost, slotId) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      const room = prev.room || emptyProfile.room
+      const price = Number(cost) || 0
+      if ((room.carePoints || 0) < price) return prev
+      return {
+        ...prev,
+        room: {
+          ...room,
+          carePoints: room.carePoints - price,
+          items: (room.items || []).map((it) =>
+            it.id === id ? { ...it, placed: true, slotId } : it,
+          ),
+        },
+      }
+    })
+  }, [])
+
+  // Put a placed item back into inventory. Nothing unlocked is ever
+  // deleted — only ever placed or put away.
+  const unplaceRoomItem = useCallback((id) => {
+    setProfile((prev) => {
+      if (!prev) return prev
+      const room = prev.room || emptyProfile.room
+      return {
+        ...prev,
+        room: {
+          ...room,
+          items: (room.items || []).map((it) =>
+            it.id === id ? { ...it, placed: false, slotId: null } : it,
+          ),
+        },
+      }
+    })
+  }, [])
+
+  const addCarePoints = useCallback((amount) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      const room = base.room || emptyProfile.room
+      return {
+        ...base,
+        room: { ...room, carePoints: (room.carePoints || 0) + (Number(amount) || 0) },
+      }
+    })
+  }, [])
+
+  const setReducedMotion = useCallback((mode) => {
+    setProfile((prev) => {
+      const base = prev || emptyProfile
+      const room = base.room || emptyProfile.room
+      return { ...base, room: { ...room, settings: { ...room.settings, reducedMotion: mode } } }
+    })
+  }, [])
+
   // Seed assets/liabilities from wizard finances once, so the snapshot
   // isn't empty the first time the user visits it.
   const seedFromFinances = useCallback(() => {
@@ -296,6 +438,13 @@ export function PlannerProvider({ children }) {
       removeLiability,
       updateLiability,
       updateRate,
+      recordVisit,
+      tendItem,
+      unlockRoomItem,
+      buyRoomItem,
+      unplaceRoomItem,
+      addCarePoints,
+      setReducedMotion,
       seedFromFinances,
       completeWizard,
       resetProfile,
@@ -305,7 +454,10 @@ export function PlannerProvider({ children }) {
       addGoal, removeGoal, updateGoal,
       addAsset, removeAsset, updateAsset,
       addLiability, removeLiability, updateLiability,
-      updateRate, seedFromFinances, completeWizard, resetProfile,
+      updateRate,
+      recordVisit, tendItem, unlockRoomItem, buyRoomItem, unplaceRoomItem,
+      addCarePoints, setReducedMotion,
+      seedFromFinances, completeWizard, resetProfile,
     ],
   )
 
