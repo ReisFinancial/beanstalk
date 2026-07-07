@@ -24,7 +24,7 @@ const MAX_MONTHS = 360 // 30-year horizon
 const ASSET_ICON = {
   savings: '🏦', retirement: '🏖️', investments: '📈',
   realEstate: '🏠', crypto: '🪙', vehicle: '🚗',
-  stockOptions: '📊', pension: '💼',
+  stockOptions: '📊', pension: '💼', collectibles: '💎',
 }
 const LIABILITY_ICON = {
   creditCard: '💳', lineOfCredit: '🧾', overdueBills: '⏰',
@@ -48,6 +48,7 @@ function inferSubtype(type, label) {
     if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
     if (/\bcar\b|\bauto\b|vehicle|truck|motorcycle/.test(s)) return 'vehicle'
     if (/stock option|\brsu\b|\beso\b/.test(s))      return 'stockOptions'
+    if (/collectible|pokemon|sneaker|\bcard\b|\bart\b|watch|wine|vintage|antique|\bnft\b/.test(s)) return 'collectibles'
     return 'investments'
   }
   if (/credit card|visa|master|amex/.test(s))        return 'creditCard'

@@ -26,6 +26,7 @@ const ASSET_SUBTYPES = [
   { id: 'vehicle',      label: 'Vehicle / car' },
   { id: 'stockOptions', label: 'Stock options' },
   { id: 'pension',      label: 'Company pension' },
+  { id: 'collectibles', label: 'Collectibles' },
 ]
 const LIABILITY_SUBTYPES = [
   { id: 'creditCard',   label: 'Credit card' },
@@ -197,8 +198,9 @@ export default function AddItemModal({
       const pmt = monthlyPayment === '' ? 0 : Number(monthlyPayment)
       if (!Number.isFinite(pmt) || pmt < 0) return
       const payload = { label: trimmed, amount: amt, subtype, monthlyPayment: pmt }
-      // Stock options: per-asset ROI overrides the Money-page type rate.
-      if (type === 'asset' && subtype === 'stockOptions') {
+      // Stock options + collectibles: per-asset ROI overrides the
+      // Money-page type rate — each collection appreciates uniquely.
+      if (type === 'asset' && (subtype === 'stockOptions' || subtype === 'collectibles')) {
         const r = Number(customRate)
         payload.customRate = Number.isFinite(r) && r >= 0 ? r : null
       }
@@ -355,11 +357,11 @@ export default function AddItemModal({
                 </div>
               </div>
 
-              {/* Stock options — per-asset projected ROI overrides the Money rate */}
-              {type === 'asset' && subtype === 'stockOptions' && (
+              {/* Stock options + collectibles — per-asset ROI override */}
+              {type === 'asset' && (subtype === 'stockOptions' || subtype === 'collectibles') && (
                 <div>
                   <label className="label" htmlFor="item-roi">
-                    Projected ROI
+                    {subtype === 'collectibles' ? 'Projected appreciation' : 'Projected ROI'}
                     <span className="text-ink-400 font-normal ml-1">(per year)</span>
                   </label>
                   <div className="relative">
@@ -370,14 +372,16 @@ export default function AddItemModal({
                       step="0.1"
                       min="0"
                       className="input pr-10"
-                      placeholder="e.g. 12"
+                      placeholder={subtype === 'collectibles' ? 'e.g. 6' : 'e.g. 12'}
                       value={customRate}
                       onChange={(e) => setCustomRate(e.target.value)}
                     />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 font-semibold">%</span>
                   </div>
                   <p className="mt-1 text-[11px] text-ink-400">
-                    Annual return you expect on these options. Used for projections only.
+                    {subtype === 'collectibles'
+                      ? 'How much you expect this collection to appreciate each year. Used for projections only.'
+                      : 'Annual return you expect on these options. Used for projections only.'}
                   </p>
                 </div>
               )}

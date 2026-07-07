@@ -26,6 +26,7 @@ function inferSubtype(type, label) {
     if (/crypto|bitcoin|eth|btc/.test(s))            return 'crypto'
     if (/\bcar\b|\bauto\b|vehicle|truck|motorcycle/.test(s)) return 'vehicle'
     if (/stock option|\brsu\b|\beso\b/.test(s))      return 'stockOptions'
+    if (/collectible|pokemon|sneaker|\bcard\b|\bart\b|watch|wine|vintage|antique|\bnft\b/.test(s)) return 'collectibles'
     return 'investments'
   }
   if (/credit card|visa|master|amex/.test(s))        return 'creditCard'
