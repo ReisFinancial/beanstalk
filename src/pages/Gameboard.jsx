@@ -138,6 +138,17 @@ function buildBoard(profile) {
   const assetTiles = (profile?.assets || []).map((a) => {
     const subtype = a.subtype || inferSubtype('asset', a.label)
     const amount  = Number(a.amount) || 0
+    // Vesting: compute months from real "now" to the unlock date. Positive
+    // means locked; <=0 means already unlocked (or was set in the past).
+    let monthsUntilUnlock = null
+    if (a.hasVesting) {
+      const y = Number(a.vestingUnlockYear)
+      const m = Number(a.vestingUnlockMonth)
+      if (Number.isFinite(y) && y > 0 && Number.isFinite(m) && m >= 1 && m <= 12) {
+        const now = new Date()
+        monthsUntilUnlock = (y - now.getFullYear()) * 12 + (m - (now.getMonth() + 1))
+      }
+    }
     return {
       id: `asset:${a.id}`,
       label: a.label || 'Asset',
@@ -148,6 +159,12 @@ function buildBoard(profile) {
       baseMonth: 0,
       rate: annualRatePct('asset', a, rates),
       pmt: Number(a.monthlyPayment) || 0,
+      // Crypto-specific flags carried onto the tile for capture rules + hints.
+      isStaked: !!a.isStaked,
+      hasVesting: !!a.hasVesting,
+      vestingUnlockMonth: a.vestingUnlockMonth,
+      vestingUnlockYear: a.vestingUnlockYear,
+      monthsUntilUnlock,
     }
   })
   const liabilityTiles = (profile?.liabilities || []).map((l) => {
@@ -484,6 +501,14 @@ function GameboardInner({ profile }) {
       draggingAsset.subtype === 'vehicle' &&
       target.kind === 'liability' &&
       target.subtype === 'carLoan'
+    ) {
+      return false
+    }
+    // Rule: vesting crypto is locked until its unlock date arrives.
+    if (
+      draggingAsset.hasVesting &&
+      draggingAsset.monthsUntilUnlock != null &&
+      month < draggingAsset.monthsUntilUnlock
     ) {
       return false
     }
@@ -1171,6 +1196,11 @@ function GameboardInner({ profile }) {
                 tile={tile}
                 value={assetValueAt(tile, month)}
                 dragging={draggingId === tile.id}
+                locked={
+                  tile.hasVesting &&
+                  tile.monthsUntilUnlock != null &&
+                  month < tile.monthsUntilUnlock
+                }
                 onDragStart={() => setDraggingId(tile.id)}
                 onDragEnd={() => { setDraggingId(null); setHoverId(null) }}
               />
@@ -1335,7 +1365,11 @@ function Header() {
 }
 
 // ── Asset tile — a draggable piece ────────────────────────────────────
-function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
+function AssetTile({ tile, value, dragging, locked = false, onDragStart, onDragEnd }) {
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const unlockLabel = tile.hasVesting && tile.vestingUnlockYear
+    ? `${MONTH_ABBR[(Number(tile.vestingUnlockMonth) || 1) - 1]} ${tile.vestingUnlockYear}`
+    : null
   // Loan cash is tinted amber so it's traceable to its matching debt tile.
   const tone = tile.isLoan
     ? { border: 'border-amber-300', from: 'from-amber-50',
@@ -1378,6 +1412,12 @@ function AssetTile({ tile, value, dragging, onDragStart, onDragEnd }) {
         )}
         {tile.subtype === 'vehicle' && (
           <p className="text-[10px] font-semibold text-amber-600">🚗 Depreciates · skips car loan</p>
+        )}
+        {tile.subtype === 'crypto' && tile.isStaked && !locked && (
+          <p className="text-[10px] font-semibold text-brand-600">✨ Staked</p>
+        )}
+        {tile.subtype === 'crypto' && locked && unlockLabel && (
+          <p className="text-[10px] font-semibold text-amber-600">🔒 Unlocks {unlockLabel}</p>
         )}
       </div>
       <span className="absolute bottom-2 right-2.5 text-ink-300 text-xs select-none">⠿</span>

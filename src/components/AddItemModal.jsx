@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { MONTH_NAMES } from '../utils/age.js'
 
 // Goal categories now describe what kind of action the goal entails.
 // The selection drives which extra inputs show below it (target $ or
@@ -114,6 +115,15 @@ export default function AddItemModal({
       ? String(initialValue.annualAnnuity)
       : '',
   )
+  // Crypto-only details — delegation to a validator + vesting schedule.
+  const [isStaked, setIsStaked]     = useState(!!initialValue?.isStaked)
+  const [hasVesting, setHasVesting] = useState(!!initialValue?.hasVesting)
+  const [vestingUnlockMonth, setVestingUnlockMonth] = useState(
+    initialValue?.vestingUnlockMonth ?? '',
+  )
+  const [vestingUnlockYear, setVestingUnlockYear] = useState(
+    initialValue?.vestingUnlockYear ?? '',
+  )
   // Asset/liability-only — picks which rate category applies
   const [subtype, setSubtype] = useState(
     initialValue?.subtype
@@ -210,6 +220,19 @@ export default function AddItemModal({
         const aa = Number(annualAnnuity)
         payload.retirementAge = Number.isFinite(ra) && ra > 0 ? Math.round(ra) : null
         payload.annualAnnuity = Number.isFinite(aa) && aa >= 0 ? aa : 0
+      }
+      // Crypto: staking APY (reuses customRate) + vesting unlock date.
+      if (type === 'asset' && subtype === 'crypto') {
+        payload.isStaked   = !!isStaked
+        payload.hasVesting = !!hasVesting
+        if (isStaked) {
+          const r = Number(customRate)
+          payload.customRate = Number.isFinite(r) && r >= 0 ? r : null
+        }
+        if (hasVesting) {
+          payload.vestingUnlockMonth = vestingUnlockMonth || ''
+          payload.vestingUnlockYear  = vestingUnlockYear  || ''
+        }
       }
       onSubmit(type, payload)
     }
@@ -383,6 +406,98 @@ export default function AddItemModal({
                       ? 'How much you expect this collection to appreciate each year. Used for projections only.'
                       : 'Annual return you expect on these options. Used for projections only.'}
                   </p>
+                </div>
+              )}
+
+              {/* Crypto — validator delegation + vesting schedule */}
+              {type === 'asset' && subtype === 'crypto' && (
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                    Crypto details
+                  </p>
+
+                  {/* Validator delegation */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isStaked}
+                        onChange={(e) => setIsStaked(e.target.checked)}
+                        className="h-4 w-4 rounded accent-grape-600"
+                      />
+                      <span className="text-sm font-semibold">Delegated to a validator</span>
+                    </label>
+                    {isStaked && (
+                      <div className="mt-2">
+                        <label className="label" htmlFor="crypto-apy">
+                          Expected APY
+                          <span className="text-ink-400 font-normal ml-1">(staking + market)</span>
+                        </label>
+                        <div className="relative max-w-[220px]">
+                          <input
+                            id="crypto-apy"
+                            type="number"
+                            inputMode="decimal"
+                            step="0.1"
+                            min="0"
+                            className="input pr-10 bg-white"
+                            placeholder="e.g. 7"
+                            value={customRate}
+                            onChange={(e) => setCustomRate(e.target.value)}
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 font-semibold">%</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-ink-400">
+                          Combine staking yield and expected price appreciation into one figure.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Vesting schedule */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasVesting}
+                        onChange={(e) => setHasVesting(e.target.checked)}
+                        className="h-4 w-4 rounded accent-grape-600"
+                      />
+                      <span className="text-sm font-semibold">On a vesting schedule</span>
+                    </label>
+                    {hasVesting && (
+                      <div className="mt-2">
+                        <label className="label">Fully unlocks on</label>
+                        <div className="flex gap-2 max-w-md">
+                          <select
+                            aria-label="Vesting unlock month"
+                            className="input flex-1 bg-white"
+                            value={vestingUnlockMonth ?? ''}
+                            onChange={(e) => setVestingUnlockMonth(e.target.value)}
+                          >
+                            <option value="">Month</option>
+                            {MONTH_NAMES.map((m, i) => (
+                              <option key={m} value={String(i + 1)}>{m}</option>
+                            ))}
+                          </select>
+                          <input
+                            aria-label="Vesting unlock year"
+                            type="number"
+                            inputMode="numeric"
+                            min={new Date().getFullYear()}
+                            step="1"
+                            className="input w-32 bg-white"
+                            placeholder="Year"
+                            value={vestingUnlockYear ?? ''}
+                            onChange={(e) => setVestingUnlockYear(e.target.value)}
+                          />
+                        </div>
+                        <p className="mt-1 text-[11px] text-ink-400">
+                          These tokens can't be sold or dragged onto goals in the Play sandbox until this date.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
