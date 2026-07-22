@@ -19,6 +19,11 @@ const emptyProfile = {
     lifeStage: [], // multi-select — array of stage labels
     country: '',   // 'CA' | 'US'
     region: '',    // province (CA) or state (US)
+    // Ideal-life framing — set in the wizard, drives track selection.
+    contentment: '',           // 'yes' | 'no' | 'maybe'
+    wealthTrack: '',           // 'preservation' | 'accumulation' | 'prioritization'
+    wantsLifeStageChange: false, // does the user want a different life stage in ~5 years
+    futureLifeStage: [],        // multi-select of what they'd like to be in 5 years
   },
   goals: [], // { id, title, category, targetAge, ... }
   priorities: [], // ordered list of goal ids

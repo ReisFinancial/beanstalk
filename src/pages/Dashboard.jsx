@@ -7,6 +7,8 @@ import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
 import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../components/PrioritizeGoalsModal.jsx'
 import BuyingPowerModal, { buyingPowerTier, BUYING_POWER_TIER_META } from '../components/BuyingPowerModal.jsx'
+import TrueNumberCard from '../components/TrueNumberCard.jsx'
+import CompareCitiesCard from '../components/CompareCitiesCard.jsx'
 import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
@@ -536,6 +538,9 @@ export default function Dashboard() {
     <div className="space-y-6">
       <Header view="home" greeting={greeting} name={profile.personal.fullName || user?.username} />
 
+      <TrueNumberCard profile={profile} />
+      <CompareCitiesCard profile={profile} />
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Top goals"      value={topGoals.length} hint="From your wizard" />
         <StatCard label="Savings rate"   value={savingsRate === null ? '—' : `${savingsRate}%`} tone={rateTone} />
@@ -933,7 +938,9 @@ const SNAPSHOT_FILTERS = [
 ]
 
 const GOAL_CAT_EMOJI = {
-  // New action-oriented categories
+  // Ideal-life categories set via the wizard
+  home: '🏠', lifestyle: '✨', financial: '💫',
+  // Action-oriented categories for manually-added goals
   debt: '🔻', investment: '📈', spending: '💸', other: '🎯',
   // Legacy theme categories — kept so older saved goals still render
   money: '💰', career: '🧑‍💻', health: '💪',

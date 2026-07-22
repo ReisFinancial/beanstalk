@@ -8,28 +8,49 @@ import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 const STEPS = [
   { id: 'welcome',    title: 'Welcome',     emoji: '👋' },
   { id: 'personal',   title: 'About you',   emoji: '🙂' },
-  { id: 'goals',      title: 'Your goals',  emoji: '🎯' },
+  { id: 'goals',      title: 'Your ideal',  emoji: '🎯' },
   { id: 'priorities', title: 'Priorities',  emoji: '⚖️' },
-  { id: 'finances',   title: 'Money snap',  emoji: '💸' },
   { id: 'review',     title: 'Review',      emoji: '✨' },
 ]
 
-// Goal categories describe the action the goal represents. Selection
-// drives which extra input shows (target $ for "investment", liability
-// picker for "debt").
+// Ideal-life goal categories drive the wizard's qualitative capture.
+// Each category exposes a different set of sub-fields — we'll turn those
+// signals into monetary targets later using 50/30/20 assumptions.
 const GOAL_CATEGORIES = [
-  { id: 'debt',       label: 'Paying down a debt',           emoji: '🔻' },
-  { id: 'investment', label: 'Hitting an investment target', emoji: '📈' },
-  { id: 'spending',   label: 'Increase spending allocation', emoji: '💸' },
-  { id: 'other',      label: 'Other',                        emoji: '🎯' },
+  { id: 'home',      label: 'Purchase a home',   emoji: '🏠' },
+  { id: 'lifestyle', label: 'Lifestyle goals',   emoji: '✨' },
+  { id: 'financial', label: 'Financial status',  emoji: '💫' },
 ]
 
-const SAMPLE_GOALS = [
-  { title: 'Build a 6-month emergency fund', category: 'investment', targetAge: 35, targetAmount: 15000 },
-  { title: 'Pay off credit card debt',       category: 'debt',       targetAge: 30 },
-  { title: 'Save for a down payment',        category: 'investment', targetAge: 35, targetAmount: 50000 },
-  { title: 'Eat out twice a week',           category: 'spending',   targetAge: 40 },
+const HOME_TYPES = ['Bungalow', 'Townhouse', 'Condo', 'Detached', 'Apartment', 'Other']
+const SOCIAL_LEVELS = [
+  { id: 'quiet',    label: 'Quiet — a few close friends' },
+  { id: 'balanced', label: 'Balanced — mix of quiet + social' },
+  { id: 'high',     label: 'High — social calendar, frequent hosting' },
 ]
+const SECURITY_LEVELS = [
+  { id: 'basic',       label: 'Basic — bills covered, some savings' },
+  { id: 'comfortable', label: 'Comfortable — no worries, room to enjoy' },
+  { id: 'abundant',    label: 'Abundant — generous, generational reach' },
+]
+const RETIREMENT_LIFESTYLES = [
+  { id: 'modest',   label: 'Modest — simpler than today' },
+  { id: 'same',     label: 'Same as today' },
+  { id: 'upgraded', label: 'Upgraded — travel, hobbies, more' },
+]
+const INVESTMENT_APPROACHES = [
+  { id: 'conservative', label: 'Conservative' },
+  { id: 'balanced',     label: 'Balanced' },
+  { id: 'ambitious',    label: 'Ambitious' },
+]
+
+// Yes/No/Maybe → wealth track. Used by the welcome step and downstream
+// features that tailor guidance to what the user's actually pursuing.
+const CONTENTMENT_TO_TRACK = {
+  yes:   'preservation',
+  no:    'accumulation',
+  maybe: 'prioritization',
+}
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
@@ -70,13 +91,28 @@ function Choice({ selected, onClick, children, emoji }) {
 // ---- Step components ---------------------------------------------------
 
 function StepWelcome({ profile, updateSection }) {
+  const contentment = profile.personal.contentment || ''
+
+  const chooseContentment = (id) => {
+    updateSection('personal', {
+      contentment: id,
+      wealthTrack: CONTENTMENT_TO_TRACK[id] || '',
+    })
+  }
+
+  const options = [
+    { id: 'yes',   emoji: '😊', label: 'Yes',   caption: 'The life I have feels right.' },
+    { id: 'no',    emoji: '🚀', label: 'No',    caption: 'I want more than what I have today.' },
+    { id: 'maybe', emoji: '🤔', label: 'Maybe', caption: 'Parts of it — the rest could stretch.' },
+  ]
+
   return (
     <div>
-      <h2 className="font-display text-2xl font-extrabold">Nice to meet you 👋</h2>
+      <h2 className="font-display text-2xl font-extrabold">Let's design your ideal life 👋</h2>
       <p className="mt-1 text-ink-500 text-sm">
-        Beanstalk turns a few quick answers into a dashboard that helps you decide what to do next.
+        No wrong answers. We'll turn what you want into the number you need to hit — starting with two quick questions.
       </p>
-      <div className="mt-6 space-y-5">
+      <div className="mt-6 space-y-6">
         <div>
           <label className="label" htmlFor="fullName">What should we call you?</label>
           <input
@@ -88,19 +124,33 @@ function StepWelcome({ profile, updateSection }) {
           />
         </div>
         <div>
-          <p className="label">Where do you want to focus first?</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {GOAL_CATEGORIES.map((c) => (
-              <Choice
-                key={c.id}
-                emoji={c.emoji}
-                selected={profile.preferences.focusArea === c.id}
-                onClick={() => updateSection('preferences', { focusArea: c.id })}
-              >
-                {c.label}
-              </Choice>
-            ))}
+          <p className="label">Are you content with the lifestyle you have today?</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {options.map((o) => {
+              const selected = contentment === o.id
+              return (
+                <button
+                  type="button"
+                  key={o.id}
+                  onClick={() => chooseContentment(o.id)}
+                  className={`text-left rounded-2xl border-2 p-3 transition ${
+                    selected
+                      ? 'border-grape-400 bg-grape-50'
+                      : 'border-slate-200 bg-white hover:border-grape-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{o.emoji}</span>
+                    <span className="font-display font-bold">{o.label}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-ink-500 leading-snug">{o.caption}</p>
+                </button>
+              )
+            })}
           </div>
+          <p className="mt-2 text-[11px] text-ink-400">
+            Behind the scenes, this sets your track: preservation, accumulation, or prioritization.
+          </p>
         </div>
       </div>
     </div>
@@ -231,6 +281,65 @@ function StepPersonal({ profile, updateSection }) {
           region={profile.personal.region}
           onChange={(patch) => updateSection('personal', patch)}
         />
+
+        {/* Future life stage — do you want a different life stage in ~5 years */}
+        <div>
+          <p className="label">Do you want a different life stage in 5 years?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                updateSection('personal', { wantsLifeStageChange: false, futureLifeStage: [] })
+              }
+              className={`flex-1 rounded-2xl border-2 px-4 py-2 text-sm font-semibold transition ${
+                !profile.personal.wantsLifeStageChange
+                  ? 'border-grape-400 bg-grape-50 text-grape-800'
+                  : 'border-slate-200 bg-white text-ink-700 hover:border-grape-300'
+              }`}
+            >
+              No — same as today
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSection('personal', { wantsLifeStageChange: true })}
+              className={`flex-1 rounded-2xl border-2 px-4 py-2 text-sm font-semibold transition ${
+                profile.personal.wantsLifeStageChange
+                  ? 'border-grape-400 bg-grape-50 text-grape-800'
+                  : 'border-slate-200 bg-white text-ink-700 hover:border-grape-300'
+              }`}
+            >
+              Yes — pick where I want to be
+            </button>
+          </div>
+
+          {profile.personal.wantsLifeStageChange && (
+            <div className="mt-3">
+              <p className="text-xs text-ink-500 mb-2">
+                What life stage would you like to be in?
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {stages.map((s) => {
+                  const future = asLifeStageArray(profile.personal.futureLifeStage)
+                  const selected = future.includes(s)
+                  return (
+                    <Choice
+                      key={s}
+                      selected={selected}
+                      onClick={() => {
+                        const next = selected
+                          ? future.filter((x) => x !== s)
+                          : [...future, s]
+                        updateSection('personal', { futureLifeStage: next })
+                      }}
+                    >
+                      {s}
+                    </Choice>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -285,45 +394,78 @@ function LocationFields({ country, region, onChange }) {
 }
 
 function StepGoals({ profile, setGoals, setPriorities }) {
-  const [draft, setDraft] = useState({
-    title: '',
-    category: 'other',
-    targetAge: '',
-    targetAmount: '',
-    spendingBucket: 'discretionary',
-    spendingIncrease: '',
-  })
+  // Draft holds every qualitative field for every category — only the
+  // ones matching the selected category are read on submit.
+  const emptyDraft = {
+    category: 'home',
+    // home
+    homeType:      '',
+    homeLocation:  '',
+    homeBeds:      '',
+    homeBaths:     '',
+    // lifestyle
+    vacationsPerYear:  '',
+    socialIntensity:   '',
+    hobbies:           '',
+    // financial
+    financialSecurity:     '',
+    retirementLifestyle:   '',
+    investmentApproach:    '',
+    // shared
+    targetAge:     '',
+  }
+  const [draft, setDraft] = useState(emptyDraft)
 
-  const addGoal = () => {
-    const t = draft.title.trim()
-    if (!t) return
-    const goal = {
-      id: uid(),
-      title: t,
-      category: draft.category,
+  const setField = (patch) => setDraft((d) => ({ ...d, ...patch }))
+
+  // Default title per category so users don't have to name every goal.
+  const defaultTitle = (d) => {
+    if (d.category === 'home') {
+      const t = d.homeType ? `${d.homeType.toLowerCase()} ` : ''
+      const loc = d.homeLocation ? ` in ${d.homeLocation}` : ''
+      return `Own a ${t}home${loc}`.replace(/  +/g, ' ').trim() || 'Purchase a home'
     }
-    const age = Number(draft.targetAge)
-    if (Number.isFinite(age) && age > 0) goal.targetAge = Math.round(age)
-    if (draft.category === 'investment' || draft.category === 'other') {
-      const tgt = Number(draft.targetAmount)
-      goal.targetAmount = Number.isFinite(tgt) && tgt >= 0 ? tgt : 0
+    if (d.category === 'lifestyle') {
+      if (d.vacationsPerYear) return `${d.vacationsPerYear} vacations / yr lifestyle`
+      return 'Live my ideal lifestyle'
     }
-    if (draft.category === 'spending') {
-      const inc = Number(draft.spendingIncrease)
-      goal.spendingBucket   = draft.spendingBucket
-      goal.spendingIncrease = Number.isFinite(inc) && inc >= 0 ? inc : 0
+    if (d.category === 'financial') {
+      if (d.financialSecurity) {
+        const label = SECURITY_LEVELS.find((s) => s.id === d.financialSecurity)?.label
+        return label ? label.split(' — ')[0] + ' financial security' : 'Reach my financial ideal'
+      }
+      return 'Reach my financial ideal'
     }
-    const next = [...profile.goals, goal]
-    setGoals(next)
-    setPriorities([...(profile.priorities || []), goal.id])
-    setDraft({ ...draft, title: '', targetAmount: '', spendingIncrease: '' })
+    return 'New goal'
   }
 
-  const addSample = (s) => {
-    const goal = { id: uid(), ...s }
+  const addGoal = () => {
+    const goal = { id: uid(), category: draft.category, title: defaultTitle(draft) }
+    const age = Number(draft.targetAge)
+    if (Number.isFinite(age) && age > 0) goal.targetAge = Math.round(age)
+
+    if (draft.category === 'home') {
+      goal.homeType     = draft.homeType || null
+      goal.homeLocation = draft.homeLocation.trim() || null
+      const beds  = Number(draft.homeBeds)
+      const baths = Number(draft.homeBaths)
+      goal.homeBeds  = Number.isFinite(beds)  && beds  >= 0 ? beds  : null
+      goal.homeBaths = Number.isFinite(baths) && baths >= 0 ? baths : null
+    } else if (draft.category === 'lifestyle') {
+      const vpy = Number(draft.vacationsPerYear)
+      goal.vacationsPerYear = Number.isFinite(vpy) && vpy >= 0 ? vpy : null
+      goal.socialIntensity  = draft.socialIntensity || null
+      goal.hobbies          = draft.hobbies.trim() || null
+    } else if (draft.category === 'financial') {
+      goal.financialSecurity   = draft.financialSecurity   || null
+      goal.retirementLifestyle = draft.retirementLifestyle || null
+      goal.investmentApproach  = draft.investmentApproach  || null
+    }
+
     const next = [...profile.goals, goal]
     setGoals(next)
     setPriorities([...(profile.priorities || []), goal.id])
+    setDraft({ ...emptyDraft, category: draft.category })
   }
 
   const removeGoal = (id) => {
@@ -333,95 +475,180 @@ function StepGoals({ profile, setGoals, setPriorities }) {
 
   return (
     <div>
-      <h2 className="font-display text-2xl font-extrabold">What are you working toward?</h2>
-      <p className="mt-1 text-ink-500 text-sm">Add 2–6 goals. You can always edit them later.</p>
+      <h2 className="font-display text-2xl font-extrabold">Paint your ideal life 🎯</h2>
+      <p className="mt-1 text-ink-500 text-sm">
+        Don't worry about the numbers — we'll calculate what things cost from your answers. Add
+        as many ideals as you'd like across the three categories.
+      </p>
 
-      <div className="mt-6 card !p-4 space-y-3">
-        <input
-          className="input"
-          placeholder="e.g. Save $10,000 for a down payment"
-          value={draft.title}
-          onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addGoal())}
-        />
+      <div className="mt-6 card !p-4 space-y-4">
         <div>
           <label className="label" htmlFor="wizard-goal-cat">Category</label>
           <select
             id="wizard-goal-cat"
             className="input"
             value={draft.category}
-            onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+            onChange={(e) => setDraft({ ...emptyDraft, category: e.target.value })}
           >
             {GOAL_CATEGORIES.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.emoji}  {c.label}
-              </option>
+              <option key={c.id} value={c.id}>{c.emoji}  {c.label}</option>
             ))}
           </select>
         </div>
-        {(draft.category === 'investment' || draft.category === 'other') && (
-          <div>
-            <label className="label" htmlFor="wizard-goal-target">
-              {draft.category === 'investment' ? 'Target amount' : 'Estimated cost'}
-            </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
-              <input
-                id="wizard-goal-target"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="1"
-                className="input pl-8"
-                placeholder="e.g. 25000"
-                value={draft.targetAmount}
-                onChange={(e) => setDraft({ ...draft, targetAmount: e.target.value })}
-              />
-            </div>
-          </div>
-        )}
-        {draft.category === 'debt' && (
-          <p className="text-[11px] text-ink-400">
-            You can link this goal to a specific liability after the wizard, from the Goals page.
-          </p>
-        )}
-        {draft.category === 'spending' && (
+
+        {/* Home purchase fields */}
+        {draft.category === 'home' && (
           <div className="space-y-3">
             <div>
-              <label className="label" htmlFor="wizard-goal-bucket">Which area to increase?</label>
+              <label className="label" htmlFor="home-type">Home type</label>
               <select
-                id="wizard-goal-bucket"
+                id="home-type"
                 className="input"
-                value={draft.spendingBucket}
-                onChange={(e) => setDraft({ ...draft, spendingBucket: e.target.value })}
+                value={draft.homeType}
+                onChange={(e) => setField({ homeType: e.target.value })}
               >
-                <option value="wealthGen">🌱 Wealth generation</option>
-                <option value="bareNec">🧱 Bare necessities</option>
-                <option value="discretionary">🎈 Discretionary spending</option>
+                <option value="">Select…</option>
+                {HOME_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="wizard-goal-increase">Increase by</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+              <label className="label" htmlFor="home-loc">Location</label>
+              <input
+                id="home-loc"
+                className="input"
+                placeholder="e.g. Toronto suburbs, Austin, coastal BC"
+                value={draft.homeLocation}
+                onChange={(e) => setField({ homeLocation: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label" htmlFor="home-beds">Bedrooms</label>
                 <input
-                  id="wizard-goal-increase"
+                  id="home-beds"
                   type="number"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   min="0"
                   step="1"
-                  className="input pl-8 pr-12"
-                  placeholder="0"
-                  value={draft.spendingIncrease}
-                  onChange={(e) => setDraft({ ...draft, spendingIncrease: e.target.value })}
+                  className="input"
+                  placeholder="3"
+                  value={draft.homeBeds}
+                  onChange={(e) => setField({ homeBeds: e.target.value })}
                 />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">
-                  /mo
-                </span>
+              </div>
+              <div>
+                <label className="label" htmlFor="home-baths">Bathrooms</label>
+                <input
+                  id="home-baths"
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  step="0.5"
+                  className="input"
+                  placeholder="2"
+                  value={draft.homeBaths}
+                  onChange={(e) => setField({ homeBaths: e.target.value })}
+                />
               </div>
             </div>
           </div>
         )}
+
+        {/* Lifestyle fields */}
+        {draft.category === 'lifestyle' && (
+          <div className="space-y-3">
+            <div>
+              <label className="label" htmlFor="ls-vacations">Vacations per year</label>
+              <input
+                id="ls-vacations"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                max="52"
+                step="1"
+                className="input max-w-[180px]"
+                placeholder="e.g. 3"
+                value={draft.vacationsPerYear}
+                onChange={(e) => setField({ vacationsPerYear: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="ls-social">Social intensity</label>
+              <select
+                id="ls-social"
+                className="input"
+                value={draft.socialIntensity}
+                onChange={(e) => setField({ socialIntensity: e.target.value })}
+              >
+                <option value="">Select…</option>
+                {SOCIAL_LEVELS.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="ls-hobbies">Hobbies</label>
+              <input
+                id="ls-hobbies"
+                className="input"
+                placeholder="e.g. skiing, live music, cooking classes"
+                value={draft.hobbies}
+                onChange={(e) => setField({ hobbies: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Financial status fields */}
+        {draft.category === 'financial' && (
+          <div className="space-y-3">
+            <div>
+              <label className="label" htmlFor="fs-security">Financial security you want</label>
+              <select
+                id="fs-security"
+                className="input"
+                value={draft.financialSecurity}
+                onChange={(e) => setField({ financialSecurity: e.target.value })}
+              >
+                <option value="">Select…</option>
+                {SECURITY_LEVELS.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="fs-retirement">Retirement lifestyle</label>
+              <select
+                id="fs-retirement"
+                className="input"
+                value={draft.retirementLifestyle}
+                onChange={(e) => setField({ retirementLifestyle: e.target.value })}
+              >
+                <option value="">Select…</option>
+                {RETIREMENT_LIFESTYLES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="fs-approach">Investment approach</label>
+              <select
+                id="fs-approach"
+                className="input"
+                value={draft.investmentApproach}
+                onChange={(e) => setField({ investmentApproach: e.target.value })}
+              >
+                <option value="">Select…</option>
+                {INVESTMENT_APPROACHES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="label" htmlFor="goal-target-age">
             Target age <span className="text-ink-400 font-normal">(optional)</span>
@@ -437,32 +664,16 @@ function StepGoals({ profile, setGoals, setPriorities }) {
               className="input pr-14"
               placeholder="e.g. 50"
               value={draft.targetAge}
-              onChange={(e) => setDraft({ ...draft, targetAge: e.target.value })}
+              onChange={(e) => setField({ targetAge: e.target.value })}
             />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
           </div>
         </div>
+
         <button type="button" onClick={addGoal} className="btn-primary w-full sm:w-auto">
-          + Add goal
+          + Add to my ideals
         </button>
       </div>
-
-      {profile.goals.length === 0 && (
-        <div className="mt-5">
-          <p className="text-xs font-semibold text-ink-500 mb-2">Or start with one of these:</p>
-          <div className="flex flex-wrap gap-2">
-            {SAMPLE_GOALS.map((s) => (
-              <button
-                key={s.title}
-                onClick={() => addSample(s)}
-                className="chip bg-white border border-slate-200 hover:border-grape-400 hover:text-grape-700"
-              >
-                + {s.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {profile.goals.length > 0 && (
         <ul className="mt-6 space-y-2">
@@ -476,7 +687,7 @@ function StepGoals({ profile, setGoals, setPriorities }) {
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{g.title}</p>
                     <p className="text-xs text-ink-500">
-                      {cat?.label}{age ? ` · By age ${age}` : ''}
+                      {cat?.label || 'Goal'}{age ? ` · By age ${age}` : ''}
                     </p>
                   </div>
                 </div>
@@ -565,95 +776,6 @@ function StepPriorities({ profile, setPriorities }) {
   )
 }
 
-function StepFinances({ profile, updateSection }) {
-  const f = profile.finances
-  const monthly = Number(f.monthlyIncome) - Number(f.monthlyExpenses)
-  const hasBoth = f.monthlyIncome && f.monthlyExpenses
-  const rate = hasBoth && Number(f.monthlyIncome) > 0
-    ? Math.round((monthly / Number(f.monthlyIncome)) * 100)
-    : null
-
-  const risks = [
-    { id: 'low',    label: 'Conservative', emoji: '🛟' },
-    { id: 'medium', label: 'Balanced',     emoji: '⚖️' },
-    { id: 'high',   label: 'Ambitious',    emoji: '🚀' },
-  ]
-
-  return (
-    <div>
-      <h2 className="font-display text-2xl font-extrabold">A quick money snapshot</h2>
-      <p className="mt-1 text-ink-500 text-sm">Rough numbers are fine. You can update any time.</p>
-
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <MoneyField id="inc" label="Monthly income (after tax)" value={f.monthlyIncome}
-          onChange={(v) => updateSection('finances', { monthlyIncome: v })} />
-        <MoneyField id="exp" label="Monthly expenses" value={f.monthlyExpenses}
-          onChange={(v) => updateSection('finances', { monthlyExpenses: v })} />
-        <MoneyField id="liq" label="Liquid savings" value={f.liquidAssets}
-          onChange={(v) => updateSection('finances', { liquidAssets: v })} />
-        <MoneyField id="inv" label="Investments" value={f.investments}
-          onChange={(v) => updateSection('finances', { investments: v })} />
-        <MoneyField id="re" label="Real estate (equity)" value={f.realEstate}
-          onChange={(v) => updateSection('finances', { realEstate: v })} />
-        <MoneyField id="debts" label="Total debts (excl. mortgage)" value={f.debts}
-          onChange={(v) => updateSection('finances', { debts: v })} />
-      </div>
-
-      <div className="mt-5">
-        <p className="label">Risk tolerance</p>
-        <div className="flex flex-wrap gap-2">
-          {risks.map((r) => (
-            <Choice
-              key={r.id}
-              emoji={r.emoji}
-              selected={f.riskTolerance === r.id}
-              onClick={() => updateSection('finances', { riskTolerance: r.id })}
-            >
-              {r.label}
-            </Choice>
-          ))}
-        </div>
-      </div>
-
-      {rate !== null && (
-        <div className="mt-6 card bg-card-gradient">
-          <p className="text-sm text-ink-500">Based on what you entered:</p>
-          <p className="mt-1 font-display text-2xl font-extrabold">
-            {rate >= 0 ? `You save about ${rate}% of your income.` : `You're spending ${Math.abs(rate)}% more than you earn.`}
-          </p>
-          <p className="mt-1 text-sm text-ink-500">
-            {rate >= 20 ? 'Great runway for ambitious goals.' :
-             rate >= 10 ? 'Solid base — we can stretch it further.' :
-             rate >= 0  ? 'Tight. We\'ll look for room to breathe.' :
-                          'Priority #1: close the gap before chasing growth.'}
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function MoneyField({ id, label, value, onChange }) {
-  return (
-    <div>
-      <label className="label" htmlFor={id}>{label}</label>
-      <div className="relative">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
-        <input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          className="input pl-8"
-          placeholder="0"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          min="0"
-        />
-      </div>
-    </div>
-  )
-}
-
 function StepReview({ profile }) {
   const topGoals = (profile.priorities || [])
     .slice(0, 3)
@@ -662,7 +784,13 @@ function StepReview({ profile }) {
 
   const stages = asLifeStageArray(profile.personal.lifeStage)
   const stageLabel = stages.length ? stages.join(', ') : '—'
+  const futureStages = asLifeStageArray(profile.personal.futureLifeStage)
   const locLabel = formatLocation(profile.personal)
+  const trackLabel = ({
+    preservation:   'Wealth preservation',
+    accumulation:   'Wealth accumulation',
+    prioritization: 'Wealth prioritization',
+  })[profile.personal.wealthTrack] || 'Not set'
 
   return (
     <div>
@@ -679,6 +807,18 @@ function StepReview({ profile }) {
             })()} · {stageLabel}
             {locLabel ? ` · ${locLabel}` : ''}
           </p>
+          {profile.personal.wantsLifeStageChange && futureStages.length > 0 && (
+            <p className="text-xs text-ink-500 mt-1">
+              In 5 years: {futureStages.join(', ')}
+            </p>
+          )}
+        </div>
+        <div className="card bg-card-gradient border-grape-200">
+          <h3 className="font-bold">Your track</h3>
+          <p className="text-sm text-ink-500 mt-1">
+            {trackLabel}
+            {profile.personal.contentment && ` · you said "${profile.personal.contentment}" to lifestyle contentment.`}
+          </p>
         </div>
         <div className="card">
           <h3 className="font-bold">Top priorities</h3>
@@ -687,14 +827,8 @@ function StepReview({ profile }) {
               {topGoals.map((g) => <li key={g.id}>{g.title}</li>)}
             </ol>
           ) : (
-            <p className="text-sm text-ink-500 mt-1">No goals added yet.</p>
+            <p className="text-sm text-ink-500 mt-1">No ideals added yet.</p>
           )}
-        </div>
-        <div className="card">
-          <h3 className="font-bold">Money snapshot</h3>
-          <p className="text-sm text-ink-500 mt-1">
-            Income ${profile.finances.monthlyIncome || 0}/mo · Expenses ${profile.finances.monthlyExpenses || 0}/mo · {profile.finances.riskTolerance ? `${profile.finances.riskTolerance} risk` : 'risk not set'}
-          </p>
         </div>
       </div>
     </div>
@@ -714,10 +848,14 @@ export default function Wizard() {
   const canContinue = useMemo(() => {
     if (!profile) return false
     switch (current.id) {
-      case 'welcome':  return profile.personal.fullName.trim().length > 0
-      case 'goals':    return profile.goals.length >= 1
-      case 'finances': return true
-      default:         return true
+      case 'welcome':
+        return profile.personal.fullName.trim().length > 0 && !!profile.personal.contentment
+      case 'goals':
+        return profile.goals.length >= 1
+      case 'review':
+        return true // review is optional per the pivot
+      default:
+        return true
     }
   }, [current.id, profile])
 
@@ -764,11 +902,10 @@ export default function Wizard() {
             {current.id === 'personal'   && <StepPersonal   profile={profile} updateSection={updateSection} />}
             {current.id === 'goals'      && <StepGoals      profile={profile} setGoals={setGoals} setPriorities={setPriorities} />}
             {current.id === 'priorities' && <StepPriorities profile={profile} setPriorities={setPriorities} />}
-            {current.id === 'finances'   && <StepFinances   profile={profile} updateSection={updateSection} />}
             {current.id === 'review'     && <StepReview     profile={profile} />}
           </div>
 
-          <div className="mt-8 flex items-center justify-between gap-3">
+          <div className="mt-8 flex items-center justify-between gap-3 flex-wrap">
             <button
               onClick={() => setStep((s) => Math.max(0, s - 1))}
               className="btn-ghost"
@@ -776,19 +913,28 @@ export default function Wizard() {
             >
               ← Back
             </button>
-            {step < STEPS.length - 1 ? (
-              <button
-                onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
-                className="btn-primary"
-                disabled={!canContinue}
-              >
-                Continue →
-              </button>
-            ) : (
-              <button onClick={finish} className="btn-primary">
-                Go to my dashboard ✨
-              </button>
-            )}
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
+              {/* On the priorities step, offer a quick "skip review" shortcut
+                  since the review is optional in the new flow. */}
+              {current.id === 'priorities' && (
+                <button onClick={finish} className="btn-ghost text-sm">
+                  Skip review →
+                </button>
+              )}
+              {step < STEPS.length - 1 ? (
+                <button
+                  onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+                  className="btn-primary"
+                  disabled={!canContinue}
+                >
+                  Continue →
+                </button>
+              ) : (
+                <button onClick={finish} className="btn-primary">
+                  Go to my dashboard ✨
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

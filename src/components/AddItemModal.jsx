@@ -5,10 +5,16 @@ import { MONTH_NAMES } from '../utils/age.js'
 // The selection drives which extra inputs show below it (target $ or
 // the liability the goal pays down).
 const GOAL_CATEGORIES = [
-  { id: 'debt',       label: 'Paying down a debt',         emoji: '🔻' },
+  // Ideal-life categories set via the wizard — kept first so they show
+  // up at the top of the picker for editing wizard-created goals.
+  { id: 'home',       label: 'Purchase a home',              emoji: '🏠' },
+  { id: 'lifestyle',  label: 'Lifestyle goals',              emoji: '✨' },
+  { id: 'financial',  label: 'Financial status',             emoji: '💫' },
+  // Action-oriented categories for manually-added goals.
+  { id: 'debt',       label: 'Paying down a debt',           emoji: '🔻' },
   { id: 'investment', label: 'Hitting an investment target', emoji: '📈' },
-  { id: 'spending',   label: 'Increase spending allocation',   emoji: '💸' },
-  { id: 'other',      label: 'Other',                       emoji: '🎯' },
+  { id: 'spending',   label: 'Increase spending allocation', emoji: '💸' },
+  { id: 'other',      label: 'Other',                        emoji: '🎯' },
 ]
 const CLASSIFICATIONS = [
   { id: 'asset',     label: 'Asset',     emoji: '🟢' },

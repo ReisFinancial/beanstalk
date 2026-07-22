@@ -31,10 +31,15 @@ const LIABILITY_ICON = {
   carLoan: '🚗', mortgage: '🏚️',
 }
 const GOAL_ICON = {
+  // Ideal-life categories set via the wizard (lifestyle overrides the legacy 🌿 below)
+  home: '🏠', financial: '💫',
+  // Action-oriented categories for manually-added goals
   debt: '🔻', investment: '📈', spending: '💸', other: '🎯',
-  // legacy theme categories
+  // Wizard "lifestyle" wins over the legacy theme category with the same id
+  lifestyle: '✨',
+  // Legacy theme categories
   money: '💰', career: '🧑‍💻', health: '💪',
-  learning: '📚', relationships: '❤️', lifestyle: '🌿',
+  learning: '📚', relationships: '❤️',
 }
 
 // ── Rate lookup — mirrors the Snapshot's per-hex rate resolution ───────
