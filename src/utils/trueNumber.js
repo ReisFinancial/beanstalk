@@ -48,6 +48,19 @@ const INTEREST_SUBTYPES = new Set([
   'savings', 'investments', 'retirement', 'crypto', 'stockOptions', 'collectibles',
 ])
 
+/**
+ * Asset subtypes that count as spendable wealth toward the True Number.
+ * Real estate, vehicles, and collectibles are excluded — they provide
+ * shelter / transport / display value, not cashflow to fund lifestyle
+ * spending. Retirement and pension face values are included because they
+ * exist specifically to fund retirement-phase spending. Anything not
+ * listed here (including a legacy subtype with no match) is excluded by
+ * default — safer to under-count than over-count wealth progress.
+ */
+const LIQUID_ASSET_SUBTYPES = new Set([
+  'savings', 'investments', 'crypto', 'retirement', 'pension', 'stockOptions',
+])
+
 
 // ── Financial primitives ────────────────────────────────────────────
 // Kept exported and pure so they can be tested + reused by the Compare
@@ -87,15 +100,22 @@ export function deferredAnnuityPV(annual, startYear, endYear, rate) {
 // Each helper is stateless and defensive so a partly-filled profile
 // never blows up the True Number card.
 
-/** Total assets minus liabilities. Matches the Snapshot's net-worth math. */
+/**
+ * Liquid net worth — wealth that could actually fund lifestyle spending.
+ * Sums assets whose subtype is in LIQUID_ASSET_SUBTYPES and subtracts
+ * every liability. Real estate, vehicles, and collectibles are excluded
+ * from the assets side. Liabilities stay in full (an illiquid asset
+ * doesn't erase the debt that funded it), so users with a mortgage will
+ * see a more conservative — and more actionable — progress figure.
+ */
 function currentNetWorth(profile) {
-  const assets = (profile?.assets || []).reduce(
-    (s, a) => s + (Number(a?.amount) || 0), 0,
-  )
+  const liquidAssets = (profile?.assets || [])
+    .filter((a) => a && LIQUID_ASSET_SUBTYPES.has(a.subtype))
+    .reduce((s, a) => s + (Number(a?.amount) || 0), 0)
   const debts = (profile?.liabilities || []).reduce(
     (s, l) => s + (Number(l?.amount) || 0), 0,
   )
-  return assets - debts
+  return liquidAssets - debts
 }
 
 /** Earliest retirement age from any pension asset; otherwise the default. */
@@ -144,11 +164,23 @@ function annualPassiveIncome(profile) {
  * @param {object} spending  Output of estimateIdealSpending() — must
  *                           carry annualSpending, retirementMultiplier,
  *                           discountRate, and idealAnnualIncome.
- * @returns {object}         Dashboard-ready summary; every field is
- *                           either a number, null, or a small object of
- *                           traceable assumptions.
+ * @param {object} [opts]    Optional overrides.
+ * @param {'coast'|'retireToday'} [opts.mode='coast']
+ *   'coast'       — user keeps working through their working years,
+ *                   then retires. Working years use full ideal spending
+ *                   at today's rate; retirement years use the reduced
+ *                   retirement rate. This is the classic Think-and-Grow-
+ *                   Rich / FIRE "coast" number.
+ *   'retireToday' — user stops working today. Every year from currentAge
+ *                   to life expectancy uses retirement-level spending.
+ *                   Pension income still doesn't offset until the pension's
+ *                   own retirementAge kicks in, so users younger than the
+ *                   pension age fund those interim years fully from wealth.
+ *
+ * @returns {object}         Dashboard-ready summary.
  */
-export function computeTrueNumber(profile, spending) {
+export function computeTrueNumber(profile, spending, opts = {}) {
+  const mode = opts.mode === 'retireToday' ? 'retireToday' : 'coast'
   const rate = Number(spending?.discountRate) || DEFAULT_DISCOUNT_RATE
   const annualSpending = Number(spending?.annualSpending) || 0
   const retMult = Number(spending?.retirementMultiplier) || 1.0
@@ -156,22 +188,34 @@ export function computeTrueNumber(profile, spending) {
   const currentAge = ageFromPersonal(profile?.personal) ?? 35
   const retireAge  = earliestRetirementAge(profile)
 
-  const yearsWorking = Math.max(0, retireAge - currentAge)
-  const yearsRetired = Math.max(0, LIFE_EXPECTANCY - Math.max(currentAge, retireAge))
+  const yearsWorking   = Math.max(0, retireAge - currentAge)
+  const yearsRetired   = Math.max(0, LIFE_EXPECTANCY - Math.max(currentAge, retireAge))
   const yearsRemaining = yearsWorking + yearsRetired
 
   const pensionIncome  = annualPensionIncome(profile)
-  const retirementSpending = Math.max(0, annualSpending * retMult - pensionIncome)
+  const retirementSpending      = Math.max(0, annualSpending * retMult - pensionIncome)
+  // "Retire today" needs a pre-pension spending line too — retirement-
+  // lifestyle spending without the pension offset, since the pension
+  // hasn't started yet.
+  const preePensionSpending     = Math.max(0, annualSpending * retMult)
 
-  // Two-phase NPV:
-  //   1) Working years — full lifestyle spending (if the user weren't working).
-  //   2) Retirement years — reduced by the retirement multiplier and by
-  //      any guaranteed pension income.
-  const workingSpendingPV    = annuityPV(annualSpending, yearsWorking, rate)
-  const retirementSpendingPV = deferredAnnuityPV(
-    retirementSpending, yearsWorking, yearsRemaining, rate,
-  )
-  const trueNumber = workingSpendingPV + retirementSpendingPV
+  let trueNumber
+  if (mode === 'retireToday') {
+    // Phase A: currentAge → pension retirement age, no pension offset.
+    // Phase B: pension retirement age → life expectancy, offset applies.
+    const pvBeforePension = annuityPV(preePensionSpending, yearsWorking, rate)
+    const pvWithPension   = deferredAnnuityPV(
+      retirementSpending, yearsWorking, yearsRemaining, rate,
+    )
+    trueNumber = pvBeforePension + pvWithPension
+  } else {
+    // Classic coast — full spending during working years, retirement rate after.
+    const workingSpendingPV    = annuityPV(annualSpending, yearsWorking, rate)
+    const retirementSpendingPV = deferredAnnuityPV(
+      retirementSpending, yearsWorking, yearsRemaining, rate,
+    )
+    trueNumber = workingSpendingPV + retirementSpendingPV
+  }
 
   // Traditional retirement target — NPV at retirement age (still USD today).
   // Not discounted back to now, so it reads as "the wealth you need to
@@ -224,6 +268,7 @@ export function computeTrueNumber(profile, spending) {
     // Every input that went into the calc — great for a "why is this
     // number what it is?" popover in the Dashboard hero card.
     assumptions: {
+      mode,                                                    // 'coast' | 'retireToday'
       currentAge:          Math.round(currentAge * 10) / 10,
       retirementAge:       retireAge,
       lifeExpectancy:      LIFE_EXPECTANCY,
@@ -248,5 +293,6 @@ export const TRUE_NUMBER_CONSTANTS = Object.freeze({
   DEFAULT_RETIREMENT_AGE,
   DEFAULT_DISCOUNT_RATE,
   ASSUMED_SAVINGS_RATE,
-  INTEREST_SUBTYPES: Array.from(INTEREST_SUBTYPES),
+  INTEREST_SUBTYPES:     Array.from(INTEREST_SUBTYPES),
+  LIQUID_ASSET_SUBTYPES: Array.from(LIQUID_ASSET_SUBTYPES),
 })

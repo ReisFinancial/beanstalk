@@ -8,19 +8,59 @@ import { computeTrueNumber } from '../utils/trueNumber.js'
  * number, progress vs current net worth, gap, Nx multiplier, and years
  * to target — plus an expandable "why this number" panel showing the
  * assumptions.
+ *
+ * A mode toggle at the top switches between two scenarios:
+ *   Coast        — user works through their normal working years and
+ *                  retires at the pension's age (or the default).
+ *   Retire today — user stops working immediately; every year from
+ *                  now to age 90 draws from wealth at retirement rates.
  */
 export default function TrueNumberCard({ profile }) {
   const [showDetails, setShowDetails] = useState(false)
+  const [mode, setMode] = useState('coast') // 'coast' | 'retireToday'
 
   const spending = useMemo(() => estimateIdealSpending(profile), [profile])
-  const number   = useMemo(() => computeTrueNumber(profile, spending), [profile, spending])
+  // Compute both scenarios so the toggle is instant.
+  const coastNumber = useMemo(
+    () => computeTrueNumber(profile, spending, { mode: 'coast' }),
+    [profile, spending],
+  )
+  const retireTodayNumber = useMemo(
+    () => computeTrueNumber(profile, spending, { mode: 'retireToday' }),
+    [profile, spending],
+  )
+  const number = mode === 'retireToday' ? retireTodayNumber : coastNumber
 
   const pct = Math.round(number.percentToTarget * 100)
   const marketName = spending.assumptions?.market?.name || 'National median'
+  const modeCopy = mode === 'retireToday'
+    ? `The wealth needed today to stop working now and sustain your ideal life to age ${number.assumptions.lifeExpectancy}.`
+    : `The wealth needed today to sustain your ideal life to age ${number.assumptions.lifeExpectancy}.`
 
   return (
     <section className="card bg-hero-gradient text-white overflow-hidden relative">
       <div className="relative">
+        {/* Mode toggle */}
+        <div className="mb-4 inline-flex bg-white/15 backdrop-blur rounded-full p-1 text-xs font-semibold border border-white/20">
+          {[
+            { id: 'coast',        label: `Coast to ${number.assumptions.retirementAge}` },
+            { id: 'retireToday',  label: 'Retire today' },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setMode(opt.id)}
+              className={`px-3 py-1 rounded-full transition ${
+                mode === opt.id
+                  ? 'bg-white text-grape-700 shadow-sm'
+                  : 'text-white/80 hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-baseline justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
@@ -30,7 +70,7 @@ export default function TrueNumberCard({ profile }) {
               {fmtMoneyLarge(number.trueNumber)}
             </p>
             <p className="mt-2 text-sm opacity-90 max-w-md">
-              The wealth needed today to sustain your ideal life to age {number.assumptions.lifeExpectancy}.
+              {modeCopy}
             </p>
           </div>
 
