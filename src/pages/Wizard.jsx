@@ -52,6 +52,17 @@ const CONTENTMENT_TO_TRACK = {
   maybe: 'prioritization',
 }
 
+// Housing situation — second True Number anchor. Contentment sets the
+// discretionary (30%) side; this sets how the home shows up in the model:
+//   need_home  → full purchase price + ongoing carrying cost
+//   upgrade    → upgrade delta (new price − current home value) + carry
+//   own_ideal  → ongoing carrying cost only, no capital ask
+const HOUSING_OPTIONS = [
+  { id: 'need_home', emoji: '🏡', label: "Don't own yet",         caption: "I'll be buying my ideal home." },
+  { id: 'upgrade',   emoji: '🏗️', label: 'Own — want to upgrade', caption: 'I want to trade up to a better home.' },
+  { id: 'own_ideal', emoji: '🏠', label: 'Already ideal',         caption: 'My home is already the one I want.' },
+]
+
 function uid() {
   return Math.random().toString(36).slice(2, 10)
 }
@@ -150,6 +161,35 @@ function StepWelcome({ profile, updateSection }) {
           </div>
           <p className="mt-2 text-[11px] text-ink-400">
             Behind the scenes, this sets your track: preservation, accumulation, or prioritization.
+          </p>
+        </div>
+        <div>
+          <p className="label">And your housing situation?</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {HOUSING_OPTIONS.map((o) => {
+              const selected = profile.personal.housingSituation === o.id
+              return (
+                <button
+                  type="button"
+                  key={o.id}
+                  onClick={() => updateSection('personal', { housingSituation: o.id })}
+                  className={`text-left rounded-2xl border-2 p-3 transition ${
+                    selected
+                      ? 'border-grape-400 bg-grape-50'
+                      : 'border-slate-200 bg-white hover:border-grape-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{o.emoji}</span>
+                    <span className="font-display font-bold">{o.label}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-ink-500 leading-snug">{o.caption}</p>
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-ink-400">
+            Sets whether your True Number needs a full home purchase, an upgrade delta, or just ongoing carrying cost.
           </p>
         </div>
       </div>
@@ -849,7 +889,9 @@ export default function Wizard() {
     if (!profile) return false
     switch (current.id) {
       case 'welcome':
-        return profile.personal.fullName.trim().length > 0 && !!profile.personal.contentment
+        return profile.personal.fullName.trim().length > 0
+          && !!profile.personal.contentment
+          && !!profile.personal.housingSituation
       case 'goals':
         return profile.goals.length >= 1
       case 'review':

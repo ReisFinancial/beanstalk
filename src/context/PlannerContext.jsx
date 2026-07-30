@@ -22,6 +22,10 @@ const emptyProfile = {
     // Ideal-life framing — set in the wizard, drives track selection.
     contentment: '',           // 'yes' | 'no' | 'maybe'
     wealthTrack: '',           // 'preservation' | 'accumulation' | 'prioritization'
+    // Housing situation — second True Number anchor alongside contentment.
+    // Drives whether the model needs a full home purchase, an upgrade delta,
+    // or just ongoing carrying cost on an already-ideal home.
+    housingSituation: '',       // 'need_home' | 'upgrade' | 'own_ideal'
     wantsLifeStageChange: false, // does the user want a different life stage in ~5 years
     futureLifeStage: [],        // multi-select of what they'd like to be in 5 years
   },
