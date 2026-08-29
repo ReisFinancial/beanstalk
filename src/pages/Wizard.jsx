@@ -8,9 +8,10 @@ import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 const STEPS = [
   { id: 'welcome',    title: 'Welcome',     emoji: '👋' },
   { id: 'personal',   title: 'About you',   emoji: '🙂' },
-  { id: 'goals',      title: 'Your ideal',  emoji: '🎯' },
+  { id: 'lifestyle',  title: 'Lifestyle',   emoji: '✨' },
+  { id: 'financial',  title: 'Financial',   emoji: '💫' },
   { id: 'priorities', title: 'Priorities',  emoji: '⚖️' },
-  { id: 'review',     title: 'Review',      emoji: '✨' },
+  { id: 'review',     title: 'Review',      emoji: '🎉' },
 ]
 
 // Ideal-life goal categories drive the wizard's qualitative capture.
@@ -22,7 +23,6 @@ const GOAL_CATEGORIES = [
   { id: 'financial', label: 'Financial status',  emoji: '💫' },
 ]
 
-const HOME_TYPES = ['Bungalow', 'Townhouse', 'Condo', 'Detached', 'Apartment', 'Other']
 const SOCIAL_LEVELS = [
   { id: 'quiet',    label: 'Quiet — a few close friends' },
   { id: 'balanced', label: 'Balanced — mix of quiet + social' },
@@ -42,6 +42,17 @@ const INVESTMENT_APPROACHES = [
   { id: 'conservative', label: 'Conservative' },
   { id: 'balanced',     label: 'Balanced' },
   { id: 'ambitious',    label: 'Ambitious' },
+]
+
+// Five templated priorities the user ranks on Step 5. Stored on
+// profile.priorityRanking as an ordered array of ids. Exported so the
+// review + downstream views (Dashboard) can render the same labels.
+export const PRIORITY_TEMPLATES = [
+  { id: 'security',   emoji: '🛡️', title: 'Freedom from a paycheck',          detail: 'Own my time. Answer to no one.' },
+  { id: 'loved_ones', emoji: '❤️',  title: 'Fully present for the ones I love', detail: 'No screens. No pings. Just me.' },
+  { id: 'lifestyle',  emoji: '✨',  title: 'A life without price tags',         detail: 'Say yes without doing the math.' },
+  { id: 'wealth',     emoji: '📈',  title: 'Wealth that outlasts me',           detail: 'Compound now. Coast later. Leave a legacy.' },
+  { id: 'home',       emoji: '🏡',  title: 'A home worth never leaving',        detail: 'Everything I love, under one roof.' },
 ]
 
 // Yes/No/Maybe → wealth track. Used by the welcome step and downstream
@@ -355,7 +366,7 @@ function StepPersonal({ profile, updateSection }) {
         </div>
         <div>
           <p className="label">
-            Life stage <span className="text-ink-400 font-normal">(select all that apply)</span>
+            Life stage today <span className="text-ink-400 font-normal">(select all that apply)</span>
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {stages.map((s) => (
@@ -377,7 +388,7 @@ function StepPersonal({ profile, updateSection }) {
 
         {/* Future life stage — do you want a different life stage in ~5 years */}
         <div>
-          <p className="label">Do you want a different life stage in 5 years?</p>
+          <p className="label">Do you see your life entering a new stage within the next 5 to 10 years?</p>
           <div className="flex gap-2">
             <button
               type="button"
@@ -486,325 +497,179 @@ function LocationFields({ country, region, onChange }) {
   )
 }
 
-function StepGoals({ profile, setGoals, setPriorities }) {
-  // Draft holds every qualitative field for every category — only the
-  // ones matching the selected category are read on submit.
-  const emptyDraft = {
-    category: 'home',
-    // home
-    homeType:      '',
-    homeLocation:  '',
-    homeBeds:      '',
-    homeBaths:     '',
-    // lifestyle
-    vacationsPerYear:  '',
-    socialIntensity:   '',
-    hobbies:           '',
-    // financial
-    financialSecurity:     '',
-    retirementLifestyle:   '',
-    investmentApproach:    '',
-    // shared
-    targetAge:     '',
+// One goal per category. Lifestyle + Financial each capture a single
+// record that the True Number model reads via firstGoalByCategory.
+// Defaulting the title from the current field values keeps the Priorities
+// + Review steps readable without asking the user to name anything.
+function defaultTitleFor(category, g) {
+  if (category === 'lifestyle') {
+    if (g?.vacationsPerYear) return `${g.vacationsPerYear} vacations / yr lifestyle`
+    return 'Live my ideal lifestyle'
   }
-  const [draft, setDraft] = useState(emptyDraft)
+  if (category === 'financial') {
+    if (g?.financialSecurity) {
+      const label = SECURITY_LEVELS.find((s) => s.id === g.financialSecurity)?.label
+      return label ? label.split(' — ')[0] + ' financial security' : 'Reach my financial ideal'
+    }
+    return 'Reach my financial ideal'
+  }
+  return 'New goal'
+}
 
-  const setField = (patch) => setDraft((d) => ({ ...d, ...patch }))
+// Binds a single goal per category to profile.goals. Creates the goal on
+// the first change; patches it in place afterward. Also keeps the goal's
+// id at the tail of profile.priorities so Priorities step picks it up.
+function useSingleGoal(profile, setGoals, setPriorities, category) {
+  const goals = profile.goals || []
+  const existing = goals.find((g) => g.category === category) || null
 
-  // Default title per category so users don't have to name every goal.
-  const defaultTitle = (d) => {
-    if (d.category === 'home') {
-      const t = d.homeType ? `${d.homeType.toLowerCase()} ` : ''
-      const loc = d.homeLocation ? ` in ${d.homeLocation}` : ''
-      return `Own a ${t}home${loc}`.replace(/  +/g, ' ').trim() || 'Purchase a home'
+  const patchGoal = (patch) => {
+    if (existing) {
+      const merged = { ...existing, ...patch }
+      merged.title = defaultTitleFor(category, merged)
+      setGoals(goals.map((g) => (g.id === existing.id ? merged : g)))
+    } else {
+      const id = uid()
+      const merged = { id, category, ...patch }
+      merged.title = defaultTitleFor(category, merged)
+      setGoals([...goals, merged])
+      setPriorities([...(profile.priorities || []), id])
     }
-    if (d.category === 'lifestyle') {
-      if (d.vacationsPerYear) return `${d.vacationsPerYear} vacations / yr lifestyle`
-      return 'Live my ideal lifestyle'
-    }
-    if (d.category === 'financial') {
-      if (d.financialSecurity) {
-        const label = SECURITY_LEVELS.find((s) => s.id === d.financialSecurity)?.label
-        return label ? label.split(' — ')[0] + ' financial security' : 'Reach my financial ideal'
-      }
-      return 'Reach my financial ideal'
-    }
-    return 'New goal'
   }
 
-  const addGoal = () => {
-    const goal = { id: uid(), category: draft.category, title: defaultTitle(draft) }
-    const age = Number(draft.targetAge)
-    if (Number.isFinite(age) && age > 0) goal.targetAge = Math.round(age)
+  return [existing, patchGoal]
+}
 
-    if (draft.category === 'home') {
-      goal.homeType     = draft.homeType || null
-      goal.homeLocation = draft.homeLocation.trim() || null
-      const beds  = Number(draft.homeBeds)
-      const baths = Number(draft.homeBaths)
-      goal.homeBeds  = Number.isFinite(beds)  && beds  >= 0 ? beds  : null
-      goal.homeBaths = Number.isFinite(baths) && baths >= 0 ? baths : null
-    } else if (draft.category === 'lifestyle') {
-      const vpy = Number(draft.vacationsPerYear)
-      goal.vacationsPerYear = Number.isFinite(vpy) && vpy >= 0 ? vpy : null
-      goal.socialIntensity  = draft.socialIntensity || null
-      goal.hobbies          = draft.hobbies.trim() || null
-    } else if (draft.category === 'financial') {
-      goal.financialSecurity   = draft.financialSecurity   || null
-      goal.retirementLifestyle = draft.retirementLifestyle || null
-      goal.investmentApproach  = draft.investmentApproach  || null
-    }
-
-    const next = [...profile.goals, goal]
-    setGoals(next)
-    setPriorities([...(profile.priorities || []), goal.id])
-    setDraft({ ...emptyDraft, category: draft.category })
-  }
-
-  const removeGoal = (id) => {
-    setGoals(profile.goals.filter((g) => g.id !== id))
-    setPriorities((profile.priorities || []).filter((x) => x !== id))
-  }
+function StepLifestyle({ profile, setGoals, setPriorities }) {
+  const [goal, patchGoal] = useSingleGoal(profile, setGoals, setPriorities, 'lifestyle')
 
   return (
     <div>
-      <h2 className="font-display text-2xl font-extrabold">Paint your ideal life 🎯</h2>
+      <h2 className="font-display text-2xl font-extrabold">Your lifestyle ✨</h2>
       <p className="mt-1 text-ink-500 text-sm">
-        Don't worry about the numbers — we'll calculate what things cost from your answers. Add
-        as many ideals as you'd like across the three categories.
+        These signals shape your 30% (wants) bucket — vacations, social spend, hobbies.
+        Skip anything that doesn't apply.
       </p>
 
       <div className="mt-6 card !p-4 space-y-4">
         <div>
-          <label className="label" htmlFor="wizard-goal-cat">Category</label>
+          <label className="label" htmlFor="ls-vacations">Vacations per year</label>
+          <input
+            id="ls-vacations"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            max="52"
+            step="1"
+            className="input max-w-[180px]"
+            placeholder="e.g. 3"
+            value={goal?.vacationsPerYear ?? ''}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === '') { patchGoal({ vacationsPerYear: null }); return }
+              const n = Number(v)
+              patchGoal({ vacationsPerYear: Number.isFinite(n) && n >= 0 ? n : null })
+            }}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="ls-social">Social intensity</label>
           <select
-            id="wizard-goal-cat"
+            id="ls-social"
             className="input"
-            value={draft.category}
-            onChange={(e) => setDraft({ ...emptyDraft, category: e.target.value })}
+            value={goal?.socialIntensity || ''}
+            onChange={(e) => patchGoal({ socialIntensity: e.target.value || null })}
           >
-            {GOAL_CATEGORIES.map((c) => (
-              <option key={c.id} value={c.id}>{c.emoji}  {c.label}</option>
+            <option value="">Select…</option>
+            {SOCIAL_LEVELS.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
         </div>
-
-        {/* Home purchase fields */}
-        {draft.category === 'home' && (
-          <div className="space-y-3">
-            <div>
-              <label className="label" htmlFor="home-type">Home type</label>
-              <select
-                id="home-type"
-                className="input"
-                value={draft.homeType}
-                onChange={(e) => setField({ homeType: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {HOME_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="home-loc">Location</label>
-              <input
-                id="home-loc"
-                className="input"
-                placeholder="e.g. Toronto suburbs, Austin, coastal BC"
-                value={draft.homeLocation}
-                onChange={(e) => setField({ homeLocation: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label" htmlFor="home-beds">Bedrooms</label>
-                <input
-                  id="home-beds"
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  step="1"
-                  className="input"
-                  placeholder="3"
-                  value={draft.homeBeds}
-                  onChange={(e) => setField({ homeBeds: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="home-baths">Bathrooms</label>
-                <input
-                  id="home-baths"
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  step="0.5"
-                  className="input"
-                  placeholder="2"
-                  value={draft.homeBaths}
-                  onChange={(e) => setField({ homeBaths: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Lifestyle fields */}
-        {draft.category === 'lifestyle' && (
-          <div className="space-y-3">
-            <div>
-              <label className="label" htmlFor="ls-vacations">Vacations per year</label>
-              <input
-                id="ls-vacations"
-                type="number"
-                inputMode="numeric"
-                min="0"
-                max="52"
-                step="1"
-                className="input max-w-[180px]"
-                placeholder="e.g. 3"
-                value={draft.vacationsPerYear}
-                onChange={(e) => setField({ vacationsPerYear: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="ls-social">Social intensity</label>
-              <select
-                id="ls-social"
-                className="input"
-                value={draft.socialIntensity}
-                onChange={(e) => setField({ socialIntensity: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {SOCIAL_LEVELS.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="ls-hobbies">Hobbies</label>
-              <input
-                id="ls-hobbies"
-                className="input"
-                placeholder="e.g. skiing, live music, cooking classes"
-                value={draft.hobbies}
-                onChange={(e) => setField({ hobbies: e.target.value })}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Financial status fields */}
-        {draft.category === 'financial' && (
-          <div className="space-y-3">
-            <div>
-              <label className="label" htmlFor="fs-security">Financial security you want</label>
-              <select
-                id="fs-security"
-                className="input"
-                value={draft.financialSecurity}
-                onChange={(e) => setField({ financialSecurity: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {SECURITY_LEVELS.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="fs-retirement">Retirement lifestyle</label>
-              <select
-                id="fs-retirement"
-                className="input"
-                value={draft.retirementLifestyle}
-                onChange={(e) => setField({ retirementLifestyle: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {RETIREMENT_LIFESTYLES.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="fs-approach">Investment approach</label>
-              <select
-                id="fs-approach"
-                className="input"
-                value={draft.investmentApproach}
-                onChange={(e) => setField({ investmentApproach: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {INVESTMENT_APPROACHES.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-
         <div>
-          <label className="label" htmlFor="goal-target-age">
-            Target age <span className="text-ink-400 font-normal">(optional)</span>
-          </label>
-          <div className="relative max-w-[200px]">
-            <input
-              id="goal-target-age"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              max="120"
-              step="1"
-              className="input pr-14"
-              placeholder="e.g. 50"
-              value={draft.targetAge}
-              onChange={(e) => setField({ targetAge: e.target.value })}
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">yrs</span>
-          </div>
+          <label className="label" htmlFor="ls-hobbies">Hobbies</label>
+          <input
+            id="ls-hobbies"
+            className="input"
+            placeholder="e.g. skiing, live music, cooking classes"
+            value={goal?.hobbies || ''}
+            onChange={(e) => patchGoal({ hobbies: e.target.value || null })}
+          />
         </div>
-
-        <button type="button" onClick={addGoal} className="btn-primary w-full sm:w-auto">
-          + Add to my ideals
-        </button>
       </div>
-
-      {profile.goals.length > 0 && (
-        <ul className="mt-6 space-y-2">
-          {profile.goals.map((g) => {
-            const cat = GOAL_CATEGORIES.find((c) => c.id === g.category)
-            const age = g.targetAge
-            return (
-              <li key={g.id} className="card !p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-2xl">{cat?.emoji ?? '🎯'}</span>
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate">{g.title}</p>
-                    <p className="text-xs text-ink-500">
-                      {cat?.label || 'Goal'}{age ? ` · By age ${age}` : ''}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => removeGoal(g.id)}
-                  className="text-ink-300 hover:text-red-500 text-sm font-semibold"
-                  aria-label={`Remove ${g.title}`}
-                >
-                  Remove
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
     </div>
   )
 }
 
-function StepPriorities({ profile, setPriorities }) {
-  const order = (profile.priorities && profile.priorities.length)
-    ? profile.priorities
-    : profile.goals.map((g) => g.id)
-  const byId = Object.fromEntries(profile.goals.map((g) => [g.id, g]))
+function StepFinancial({ profile, setGoals, setPriorities }) {
+  const [goal, patchGoal] = useSingleGoal(profile, setGoals, setPriorities, 'financial')
+
+  return (
+    <div>
+      <h2 className="font-display text-2xl font-extrabold">Your financial status 💫</h2>
+      <p className="mt-1 text-ink-500 text-sm">
+        Sets the discount rate for your True Number and how much your retirement-phase
+        spending shifts from today's lifestyle.
+      </p>
+
+      <div className="mt-6 card !p-4 space-y-4">
+        <div>
+          <label className="label" htmlFor="fs-security">Financial security you want</label>
+          <select
+            id="fs-security"
+            className="input"
+            value={goal?.financialSecurity || ''}
+            onChange={(e) => patchGoal({ financialSecurity: e.target.value || null })}
+          >
+            <option value="">Select…</option>
+            {SECURITY_LEVELS.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="fs-retirement">Retirement lifestyle</label>
+          <select
+            id="fs-retirement"
+            className="input"
+            value={goal?.retirementLifestyle || ''}
+            onChange={(e) => patchGoal({ retirementLifestyle: e.target.value || null })}
+          >
+            <option value="">Select…</option>
+            {RETIREMENT_LIFESTYLES.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="fs-approach">Investment approach</label>
+          <select
+            id="fs-approach"
+            className="input"
+            value={goal?.investmentApproach || ''}
+            onChange={(e) => patchGoal({ investmentApproach: e.target.value || null })}
+          >
+            <option value="">Select…</option>
+            {INVESTMENT_APPROACHES.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StepPriorities({ profile, setPriorityRanking }) {
+  // Start from the user's stored order, then append any templates missing
+  // from a partial order (added since they last touched this step) so the
+  // list is always exactly the current template set.
+  const stored = profile.priorityRanking || []
+  const templateIds = PRIORITY_TEMPLATES.map((t) => t.id)
+  const order = [
+    ...stored.filter((id) => templateIds.includes(id)),
+    ...templateIds.filter((id) => !stored.includes(id)),
+  ]
 
   const move = (id, dir) => {
     const idx = order.indexOf(id)
@@ -812,67 +677,65 @@ function StepPriorities({ profile, setPriorities }) {
     if (idx < 0 || j < 0 || j >= order.length) return
     const next = order.slice()
     ;[next[idx], next[j]] = [next[j], next[idx]]
-    setPriorities(next)
+    setPriorityRanking(next)
   }
 
   return (
     <div>
-      <h2 className="font-display text-2xl font-extrabold">Rank your goals</h2>
+      <h2 className="font-display text-2xl font-extrabold">Rank what matters ⚖️</h2>
       <p className="mt-1 text-ink-500 text-sm">
-        Drag a card up or down with the arrows. The top three become your focus this quarter.
+        Move the cards so the ones that matter most sit at the top. The top three become your focus this quarter.
       </p>
 
-      {order.length === 0 ? (
-        <div className="mt-6 card text-center text-ink-500">
-          Add a few goals in the previous step, then come back to rank them.
-        </div>
-      ) : (
-        <ol className="mt-6 space-y-2">
-          {order.map((id, i) => {
-            const g = byId[id]
-            if (!g) return null
-            const cat = GOAL_CATEGORIES.find((c) => c.id === g.category)
-            const top = i < 3
-            return (
-              <li
-                key={id}
-                className={`card !p-4 flex items-center gap-3 ${top ? 'ring-2 ring-grape-300' : ''}`}
-              >
-                <span className={`grid place-items-center h-8 w-8 rounded-full text-xs font-bold
-                  ${top ? 'bg-hero-gradient text-white' : 'bg-slate-100 text-ink-500'}`}>
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{g.title}</p>
-                  <p className="text-xs text-ink-500">{cat?.emoji} {cat?.label}</p>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <button
-                    className="h-7 w-7 rounded-full bg-slate-100 hover:bg-slate-200 text-sm font-bold disabled:opacity-30"
-                    disabled={i === 0}
-                    onClick={() => move(id, -1)}
-                    aria-label="Move up"
-                  >↑</button>
-                  <button
-                    className="h-7 w-7 rounded-full bg-slate-100 hover:bg-slate-200 text-sm font-bold disabled:opacity-30"
-                    disabled={i === order.length - 1}
-                    onClick={() => move(id, 1)}
-                    aria-label="Move down"
-                  >↓</button>
-                </div>
-              </li>
-            )
-          })}
-        </ol>
-      )}
+      <ol className="mt-6 space-y-2">
+        {order.map((id, i) => {
+          const t = PRIORITY_TEMPLATES.find((x) => x.id === id)
+          if (!t) return null
+          const top = i < 3
+          return (
+            <li
+              key={id}
+              className={`card !p-4 flex items-center gap-3 ${top ? 'ring-2 ring-grape-300' : ''}`}
+            >
+              <span className="grid place-items-center h-8 w-8 rounded-full text-xs font-bold bg-hero-gradient text-white">
+                {i + 1}
+              </span>
+              <span className="text-2xl">{t.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">{t.title}</p>
+                <p className="text-xs text-ink-500 truncate">{t.detail}</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <button
+                  className="h-7 w-7 rounded-full bg-slate-100 hover:bg-slate-200 text-sm font-bold disabled:opacity-30"
+                  disabled={i === 0}
+                  onClick={() => move(id, -1)}
+                  aria-label="Move up"
+                >↑</button>
+                <button
+                  className="h-7 w-7 rounded-full bg-slate-100 hover:bg-slate-200 text-sm font-bold disabled:opacity-30"
+                  disabled={i === order.length - 1}
+                  onClick={() => move(id, 1)}
+                  aria-label="Move down"
+                >↓</button>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }
 
 function StepReview({ profile }) {
-  const topGoals = (profile.priorities || [])
+  // Top 3 priorities come from the templated ranking captured on Step 5.
+  // Fall back to the templates' natural order if the user never touched it.
+  const priorityOrder = (profile.priorityRanking && profile.priorityRanking.length)
+    ? profile.priorityRanking
+    : PRIORITY_TEMPLATES.map((t) => t.id)
+  const topPriorities = priorityOrder
     .slice(0, 3)
-    .map((id) => profile.goals.find((g) => g.id === id))
+    .map((id) => PRIORITY_TEMPLATES.find((t) => t.id === id))
     .filter(Boolean)
 
   const stages = asLifeStageArray(profile.personal.lifeStage)
@@ -902,7 +765,7 @@ function StepReview({ profile }) {
           </p>
           {profile.personal.wantsLifeStageChange && futureStages.length > 0 && (
             <p className="text-xs text-ink-500 mt-1">
-              In 5 years: {futureStages.join(', ')}
+              In 5–10 years: {futureStages.join(', ')}
             </p>
           )}
         </div>
@@ -915,13 +778,13 @@ function StepReview({ profile }) {
         </div>
         <div className="card">
           <h3 className="font-bold">Top priorities</h3>
-          {topGoals.length ? (
-            <ol className="mt-2 space-y-1.5 list-decimal list-inside text-sm">
-              {topGoals.map((g) => <li key={g.id}>{g.title}</li>)}
-            </ol>
-          ) : (
-            <p className="text-sm text-ink-500 mt-1">No ideals added yet.</p>
-          )}
+          <ol className="mt-2 space-y-1.5 list-decimal list-inside text-sm">
+            {topPriorities.map((t) => (
+              <li key={t.id}>
+                <span className="mr-1">{t.emoji}</span>{t.title}
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </div>
@@ -932,7 +795,7 @@ function StepReview({ profile }) {
 
 export default function Wizard() {
   const { user } = useAuth()
-  const { profile, updateSection, setGoals, setPriorities, completeWizard, resetProfile } = usePlanner()
+  const { profile, updateSection, setGoals, setPriorities, setPriorityRanking, completeWizard, resetProfile } = usePlanner()
   const [step, setStep] = useState(0)
   const navigate = useNavigate()
 
@@ -949,8 +812,6 @@ export default function Wizard() {
           && !!profile.personal.housingSituation
           && (!needsNeighbourhood || !!profile.personal.neighbourhoodType)
       }
-      case 'goals':
-        return profile.goals.length >= 1
       case 'review':
         return true // review is optional per the pivot
       default:
@@ -999,8 +860,9 @@ export default function Wizard() {
           <div className="mt-6">
             {current.id === 'welcome'    && <StepWelcome    profile={profile} updateSection={updateSection} />}
             {current.id === 'personal'   && <StepPersonal   profile={profile} updateSection={updateSection} />}
-            {current.id === 'goals'      && <StepGoals      profile={profile} setGoals={setGoals} setPriorities={setPriorities} />}
-            {current.id === 'priorities' && <StepPriorities profile={profile} setPriorities={setPriorities} />}
+            {current.id === 'lifestyle'  && <StepLifestyle  profile={profile} setGoals={setGoals} setPriorities={setPriorities} />}
+            {current.id === 'financial'  && <StepFinancial  profile={profile} setGoals={setGoals} setPriorities={setPriorities} />}
+            {current.id === 'priorities' && <StepPriorities profile={profile} setPriorityRanking={setPriorityRanking} />}
             {current.id === 'review'     && <StepReview     profile={profile} />}
           </div>
 

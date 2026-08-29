@@ -33,7 +33,11 @@ const emptyProfile = {
     futureLifeStage: [],        // multi-select of what they'd like to be in 5 years
   },
   goals: [], // { id, title, category, targetAge, ... }
-  priorities: [], // ordered list of goal ids
+  priorities: [], // legacy — ordered list of goal ids; still read by Dashboard
+  // Ordered list of PRIORITY_TEMPLATES ids captured on the wizard's
+  // Priorities step. Independent of profile.goals, so the templated
+  // ranking survives even when the user has no goals stored.
+  priorityRanking: [],
   assets: [], // { id, label, amount, subtype, monthlyPayment, note?,
               //   customRate?,        // per-asset rate override (stockOptions ROI)
               //   retirementAge?,     // pension: age annuity begins
@@ -141,6 +145,10 @@ export function PlannerProvider({ children }) {
 
   const setPriorities = useCallback((priorities) => {
     setProfile((prev) => ({ ...(prev || emptyProfile), priorities }))
+  }, [])
+
+  const setPriorityRanking = useCallback((priorityRanking) => {
+    setProfile((prev) => ({ ...(prev || emptyProfile), priorityRanking }))
   }, [])
 
   const addGoal = useCallback((goal) => {
@@ -298,6 +306,7 @@ export function PlannerProvider({ children }) {
       updateSection,
       setGoals,
       setPriorities,
+      setPriorityRanking,
       addGoal,
       removeGoal,
       updateGoal,
@@ -313,7 +322,7 @@ export function PlannerProvider({ children }) {
       resetProfile,
     }),
     [
-      profile, updateProfile, updateSection, setGoals, setPriorities,
+      profile, updateProfile, updateSection, setGoals, setPriorities, setPriorityRanking,
       addGoal, removeGoal, updateGoal,
       addAsset, removeAsset, updateAsset,
       addLiability, removeLiability, updateLiability,
