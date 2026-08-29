@@ -24,8 +24,11 @@ const emptyProfile = {
     wealthTrack: '',           // 'preservation' | 'accumulation' | 'prioritization'
     // Housing situation — second True Number anchor alongside contentment.
     // Drives whether the model needs a full home purchase, an upgrade delta,
-    // or just ongoing carrying cost on an already-ideal home.
-    housingSituation: '',       // 'need_home' | 'upgrade' | 'own_ideal'
+    // ongoing carrying cost on an already-ideal home, or a rent line.
+    housingSituation: '',       // 'need_home' | 'upgrade' | 'own_ideal' | 'prefer_rent'
+    // Only relevant when housingSituation is 'need_home' or 'upgrade'; used
+    // to pick the right dwelling-cost bucket once that dataset is live.
+    neighbourhoodType: '',      // 'urban' | 'suburbs' | 'rural'
     wantsLifeStageChange: false, // does the user want a different life stage in ~5 years
     futureLifeStage: [],        // multi-select of what they'd like to be in 5 years
   },

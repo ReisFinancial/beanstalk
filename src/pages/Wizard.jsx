@@ -54,13 +54,26 @@ const CONTENTMENT_TO_TRACK = {
 
 // Housing situation — second True Number anchor. Contentment sets the
 // discretionary (30%) side; this sets how the home shows up in the model:
-//   need_home  → full purchase price + ongoing carrying cost
-//   upgrade    → upgrade delta (new price − current home value) + carry
-//   own_ideal  → ongoing carrying cost only, no capital ask
+//   need_home     → full purchase price + ongoing carrying cost
+//   upgrade       → upgrade delta (new price − current home value) + carry
+//   own_ideal     → ongoing carrying cost only, no capital ask
+//   prefer_rent   → no capital ask, no carry; substitute annual rent line
 const HOUSING_OPTIONS = [
-  { id: 'need_home', emoji: '🏡', label: "Don't own yet",         caption: "I'll be buying my ideal home." },
-  { id: 'upgrade',   emoji: '🏗️', label: 'Own — want to upgrade', caption: 'I want to trade up to a better home.' },
-  { id: 'own_ideal', emoji: '🏠', label: 'Already ideal',         caption: 'My home is already the one I want.' },
+  { id: 'need_home',   emoji: '🏡', label: "Don't own yet",         caption: "I'll be buying my ideal home." },
+  { id: 'upgrade',     emoji: '🏗️', label: 'Own — want to upgrade', caption: 'I want to trade up to a better home.' },
+  { id: 'own_ideal',   emoji: '🏠', label: 'Already ideal',         caption: 'My home is already the one I want.' },
+  { id: 'prefer_rent', emoji: '🔑', label: "Don't own, prefer to rent", caption: 'Renting is the plan long-term.' },
+]
+
+// Purchase-path situations need a neighbourhood follow-up so the model
+// can look up the right dwelling dataset once we have one. Owners with
+// their ideal home already or lifelong renters skip this question.
+const HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD = new Set(['need_home', 'upgrade'])
+
+const NEIGHBOURHOOD_OPTIONS = [
+  { id: 'urban',    emoji: '🏙️', label: 'Urban',   caption: 'Downtown, close to the core.' },
+  { id: 'suburbs',  emoji: '🏘️', label: 'Suburbs', caption: 'Walking distance to everything.' },
+  { id: 'rural',    emoji: '🌾', label: 'Rural',   caption: 'You need a car to go everywhere.' },
 ]
 
 function uid() {
@@ -165,14 +178,22 @@ function StepWelcome({ profile, updateSection }) {
         </div>
         <div>
           <p className="label">And your housing situation?</p>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             {HOUSING_OPTIONS.map((o) => {
               const selected = profile.personal.housingSituation === o.id
               return (
                 <button
                   type="button"
                   key={o.id}
-                  onClick={() => updateSection('personal', { housingSituation: o.id })}
+                  onClick={() => {
+                    // If the new situation doesn't need a neighbourhood, clear
+                    // any stale value from a previous selection.
+                    const patch = { housingSituation: o.id }
+                    if (!HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD.has(o.id)) {
+                      patch.neighbourhoodType = ''
+                    }
+                    updateSection('personal', patch)
+                  }}
                   className={`text-left rounded-2xl border-2 p-3 transition ${
                     selected
                       ? 'border-grape-400 bg-grape-50'
@@ -189,8 +210,40 @@ function StepWelcome({ profile, updateSection }) {
             })}
           </div>
           <p className="mt-2 text-[11px] text-ink-400">
-            Sets whether your True Number needs a full home purchase, an upgrade delta, or just ongoing carrying cost.
+            Sets whether your True Number needs a full home purchase, an upgrade delta, ongoing carrying cost, or a rent line.
           </p>
+
+          {HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD.has(profile.personal.housingSituation) && (
+            <div className="mt-4 rounded-2xl border border-grape-100 bg-grape-50/40 p-3">
+              <p className="label">Type of neighbourhood</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {NEIGHBOURHOOD_OPTIONS.map((o) => {
+                  const selected = profile.personal.neighbourhoodType === o.id
+                  return (
+                    <button
+                      type="button"
+                      key={o.id}
+                      onClick={() => updateSection('personal', { neighbourhoodType: o.id })}
+                      className={`text-left rounded-2xl border-2 p-3 transition ${
+                        selected
+                          ? 'border-grape-400 bg-white'
+                          : 'border-slate-200 bg-white hover:border-grape-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{o.emoji}</span>
+                        <span className="font-display font-bold">{o.label}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-ink-500 leading-snug">{o.caption}</p>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-ink-400">
+                Feeds the dwelling-cost dataset once it's live — until then it's stored on your profile for the model to read.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -888,10 +941,14 @@ export default function Wizard() {
   const canContinue = useMemo(() => {
     if (!profile) return false
     switch (current.id) {
-      case 'welcome':
+      case 'welcome': {
+        const needsNeighbourhood = HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD
+          .has(profile.personal.housingSituation)
         return profile.personal.fullName.trim().length > 0
           && !!profile.personal.contentment
           && !!profile.personal.housingSituation
+          && (!needsNeighbourhood || !!profile.personal.neighbourhoodType)
+      }
       case 'goals':
         return profile.goals.length >= 1
       case 'review':
