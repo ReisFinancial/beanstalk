@@ -47,6 +47,17 @@ const INVESTMENT_APPROACHES = [
 // Five templated priorities the user ranks on Step 5. Stored on
 // profile.priorityRanking as an ordered array of ids. Exported so the
 // review + downstream views (Dashboard) can render the same labels.
+// Five templated hobby categories the user ranks on Step 3. Stored on
+// the lifestyle goal as `hobbyRanking` — an ordered array of ids. Later
+// the model can weight cost by position (top-ranked category scales up).
+export const HOBBY_TEMPLATES = [
+  { id: 'active',  emoji: '🏞️', title: 'Active',  detail: 'Sports, outdoors, and nature.' },
+  { id: 'social',  emoji: '🍸', title: 'Social',  detail: 'Nights out with friends.' },
+  { id: 'luxury',  emoji: '🛍️', title: 'Luxury',  detail: 'Retail and collectibles.' },
+  { id: 'digital', emoji: '🎮', title: 'Digital', detail: 'Games and screens.' },
+  { id: 'culture', emoji: '🎭', title: 'Culture', detail: 'Theatre and the arts.' },
+]
+
 export const PRIORITY_TEMPLATES = [
   { id: 'security',   emoji: '🛡️', title: 'Freedom from a paycheck',          detail: 'Own my time. Answer to no one.' },
   { id: 'loved_ones', emoji: '❤️',  title: 'Fully present for the ones I love', detail: 'No screens. No pings. Just me.' },
@@ -540,6 +551,60 @@ function useSingleGoal(profile, setGoals, setPriorities, category) {
   return [existing, patchGoal]
 }
 
+// Reorderable list of hobby templates. Reconciles stored order with the
+// current template set on each render so a template added/removed later
+// slots in without breaking a partially-saved ranking.
+function HobbyRanker({ ranking, onChange }) {
+  const templateIds = HOBBY_TEMPLATES.map((t) => t.id)
+  const stored = ranking || []
+  const order = [
+    ...stored.filter((id) => templateIds.includes(id)),
+    ...templateIds.filter((id) => !stored.includes(id)),
+  ]
+  const move = (id, dir) => {
+    const idx = order.indexOf(id)
+    const j = idx + dir
+    if (idx < 0 || j < 0 || j >= order.length) return
+    const next = order.slice()
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    onChange(next)
+  }
+  return (
+    <ol className="space-y-2">
+      {order.map((id, i) => {
+        const t = HOBBY_TEMPLATES.find((x) => x.id === id)
+        if (!t) return null
+        return (
+          <li key={id} className="card !p-3 flex items-center gap-3">
+            <span className="grid place-items-center h-8 w-8 rounded-full text-xs font-bold bg-hero-gradient text-white">
+              {i + 1}
+            </span>
+            <span className="text-2xl">{t.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate">{t.title}</p>
+              <p className="text-xs text-ink-500 truncate">{t.detail}</p>
+            </div>
+            <div className="flex flex-col gap-1">
+              <button
+                className="h-7 w-7 rounded-full bg-slate-100 hover:bg-slate-200 text-sm font-bold disabled:opacity-30"
+                disabled={i === 0}
+                onClick={() => move(id, -1)}
+                aria-label="Move up"
+              >↑</button>
+              <button
+                className="h-7 w-7 rounded-full bg-slate-100 hover:bg-slate-200 text-sm font-bold disabled:opacity-30"
+                disabled={i === order.length - 1}
+                onClick={() => move(id, 1)}
+                aria-label="Move down"
+              >↓</button>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
 function StepLifestyle({ profile, setGoals, setPriorities }) {
   const [goal, patchGoal] = useSingleGoal(profile, setGoals, setPriorities, 'lifestyle')
 
@@ -587,13 +652,13 @@ function StepLifestyle({ profile, setGoals, setPriorities }) {
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="ls-hobbies">Hobbies</label>
-          <input
-            id="ls-hobbies"
-            className="input"
-            placeholder="e.g. skiing, live music, cooking classes"
-            value={goal?.hobbies || ''}
-            onChange={(e) => patchGoal({ hobbies: e.target.value || null })}
+          <p className="label">Hobbies you'd prioritize</p>
+          <p className="text-xs text-ink-500 mb-2">
+            Move the categories so what you'd spend most time on sits at the top.
+          </p>
+          <HobbyRanker
+            ranking={goal?.hobbyRanking}
+            onChange={(next) => patchGoal({ hobbyRanking: next })}
           />
         </div>
       </div>
@@ -628,7 +693,7 @@ function StepFinancial({ profile, setGoals, setPriorities }) {
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="fs-retirement">Retirement lifestyle</label>
+          <label className="label" htmlFor="fs-retirement">Post-employment lifestyle</label>
           <select
             id="fs-retirement"
             className="input"

@@ -251,8 +251,16 @@ function computeSocialCost(lifestyleGoal, densityTier, security) {
 function computeHobbiesCost(lifestyleGoal, security) {
   // v1: no hobby-text parsing; every user with a lifestyle goal gets
   // the same baseline, scaled by financial security level. Later we
-  // can key on words like "skiing", "golf", "collector" to scale up.
-  const hasHobbies = !!(lifestyleGoal && (lifestyleGoal.hobbies || '').trim())
+  // can key on words like "skiing", "golf", "collector" to scale up,
+  // or weight by hobbyRanking position (top-ranked category paying more).
+  // Accepts either the new hobbyRanking array or the legacy free-text
+  // hobbies string so existing profiles keep computing the same cost.
+  const hasHobbies = !!(
+    lifestyleGoal && (
+      (lifestyleGoal.hobbies || '').trim() ||
+      (Array.isArray(lifestyleGoal.hobbyRanking) && lifestyleGoal.hobbyRanking.length > 0)
+    )
+  )
   const secMult = SECURITY_MULTIPLIER[security] ?? SECURITY_MULTIPLIER[DEFAULT_SECURITY]
   const annual = hasHobbies ? HOBBIES_BASE_USD * secMult : 0
   return {
