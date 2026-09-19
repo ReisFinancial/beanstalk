@@ -1,0 +1,134 @@
+table name: city,,,,,,,,
+id,name,country,state,region,population,priceToRent,propertyTax,utilities
+1,Toronto,CA,ON,GTA,2930000,25,0.0075,4200
+2,Vancouver,CA,BC,Lower Mainland,700000,30,0.003,3650
+3,Halifax,CA,NS,Atlantic,440000,22,0.0077,4650
+4,Austin,US,TX,Hill Country,1010000,20,0.016,4250
+5,Denver-Aurora-Lakewood,US,CO,Front Range,3000000,21,0.0055,3700
+6,Riverside-San Bernardino-Ontario,US,CA,West,4700000,,0.0075,4050
+7,McAllen,US,TX,South,145000,,0.018,3850
+8,Minneapolis-St. Paul-Bloomington,US,MN,Midwest,3800000,,0.011,3900
+9,Billings,US,MT,Rockies,120000,,0.008,3650
+10,Boston-Cambridge-Newton,US,MA,Northeast,5000000,,0.011,4650
+11,Boise,US,ID,Northeast,240000,,0.006,3300
+12,Calgary-Edmonton,CA,AB,Prairies,3530000,,0.0066,4450
+13,Washington-Arlington-Alexandria,US,DC,South,6500000,,0.0085,4700
+14,Phoenix-Mesa-Chandler,US,AZ,Southwest,5200000,,0.006,4350
+15,San Francisco-Oakland-Berkeley,US,CA,West,4600000,,0.0075,4700
+16,Chicago-Naperville-Elgin,US,IL,Midwest,9400000,13.2,0.018,4400
+17,Nashville-Davidson-Murfressboro-Franklin,US,TN,South,2200000,,0.0065,3600
+18,El Paso,US,TX,South,680000,,0.018,3750
+19,Philadephia-Camden-Wilmington,US,PA,Northeast,6400000,,0.013,4550
+20,New Orleans-Metairie,US,LA,South,970000,,0.006,4100
+21,Memphis,US,TN,South,1340000,,0.011,3550
+22,New York-Newark-Jersey City,US,NYC,Northeast,19800000,17.1,0.014,5300
+23,Montreal,CA,QC,East,4600000,,0.0085,3250
+24,Dallas-Fort Worth-Arlington,US,TX,South,8400000,,0.018,4050
+25,Houston-Pasadena-The Woodlands,US,TX,South,7800000,,0.018,4250
+26,Miami-Fort Lauderdale-West Palm Beach,US,FL,South,6300000,,0.008,4100
+27,Detroit-Warren-Dearborn,US,MI,Great Lakes,4400000,,0.014,4000
+28,Seattle-Tacoma-Bellevue,US,WA,Pacifc Northwest,4100000,,0.0095,4200
+29,Tampa-St. Petersburg-Clearwater,US,FL,Gulf Coast,3500000,,0.008,3950
+30,San Diego-Chula Vista-Carlsbad,US,CA,Pacific,3300000,,0.0075,4200
+31,Orlando-Kissimmee-Sanford,US,FL,South,2900000,,0.0085,4000
+32,Baltimore-Columbia-Towson,US,MD,Atlantic,2900000,,0.01,4550
+33,Charlotte-Concord-Gastonia,US,NC,Carolinas,2900000,,0.008,3650
+34,St. Louis,US,MO,Central,2800000,,0.01,3800
+35,San Antonio-New Braunfels,US,TX,South,2800000,,0.017,3900
+36,Las Vegas-Henderson,US,NV,South,2400000,,0.005,3750
+37,Urban Honolulu,US,HI,Pacific,988702,,0.0025,5050
+38,Anchorage,US,AK,Northwest,405821,,0.011,5250
+39,Birmingham-Hoover,US,AL,Southeast,1200000,,0.0035,3500
+40,Louisville/Jefferson County,US,KY,Midwest,1400000,,0.008,3700
+,,,,,,,,
+table name: cityLife,,,,,,,,
+id,cityId,food,transport,utilities,,,,
+1,1,5200,4800,3600,,,,
+2,2,5400,4200,2400,,,,
+3,3,4700,6900,2800,,,,
+4,4,4900,8400,3000,,,,
+5,5,5000,7800,2900,,,,
+,,,,,,,,
+table name: realEstateTable,,,,,,,,
+id,cityId,densityTierId,amountPrice,,,,,
+1,1,1,950000,,,,,
+2,1,2,720000,,,,,
+3,1,3,550000,,,,,
+4,2,1,1250000,,,,,
+5,2,2,950000,,,,,
+6,2,3,750000,,,,,
+7,3,1,620000,,,,,
+8,3,2,480000,,,,,
+9,3,3,360000,,,,,
+10,4,1,680000,,,,,
+11,4,2,520000,,,,,
+12,4,3,380000,,,,,
+13,5,1,720000,,,,,
+14,5,2,560000,,,,,
+15,5,3,420000,,,,,
+,,,,,,,,
+table name: lifestyle,,,,,,,,
+id,cityId,lifestyleTypeId,activity,amount,frequency,,,
+1,1,1,Ski weekend pass,250,6,,,
+2,1,1,Gym membership,70,12,,,
+3,1,2,Dinner out,85,48,,,
+4,1,2,Concert / event,120,6,,,
+5,1,5,Theatre subscription,90,8,,,
+6,2,1,Ski season pass,1500,1,,,
+7,2,1,Mountain biking,60,20,,,
+8,2,2,Dinner out,90,40,,,
+9,4,1,Kayak / paddle,45,24,,,
+10,4,1,Gym membership,50,12,,,
+11,4,2,6th Street night,95,30,,,
+12,4,2,Live music show,35,24,,,
+13,5,1,Ski season pass,900,1,,,
+14,5,1,Hiking permits,30,20,,,
+15,3,5,Symphony season,75,6,,,
+16,3,2,Pub night,55,40,,,
+,,,,,,,,
+table name: lifestyleType,,,,,,,,
+id,category,,,,,,,
+1,active,,,,,,,
+2,social,,,,,,,
+3,luxury,,,,,,,
+4,digital,,,,,,,
+5,culture,,,,,,,
+,,,,,,,,
+table name: lifestyleTiers,,,,,,,,
+lifestyleTiers,intensityTier,multiple,,,,,,
+1,quiet,0.6,,,,,,
+2,balanced,1,,,,,,
+3,high,1.8,,,,,,
+,,,,,,,,
+table name: lifestyleTable,,,,,,,,
+id,lifestyleActivityId,lifestyleTierId,lifestyleBudget,,,,,
+,,,,,,,,
+table name: financialSecurityTiers,,,,,,,,
+id,financialTier,multiple,,,,,,
+1,basic,1.1,,,,,,
+2,comfortable,1.6,,,,,,
+3,abundant,3.5,,,,,,
+,,,,,,,,
+table name: investmentTier,,,,,,,,
+id,investApproach,workToInvest,,,,,,
+1,conservative,0.03,,,,,,
+2,balanced,0.05,,,,,,
+3,ambitious,0.07,,,,,,
+,,,,,,,,
+table name: densityTiers,,,,,,,,
+id,densityTier,,,,,,,
+1,urban,,,,,,,
+2,suburbs,,,,,,,
+3,rural,,,,,,,
+,,,,,,,,
+table name: wealthTable,,,,,,,,
+id,financialSecurityTiers,investTierId,,,,,,
+1,1,1,,,,,,
+2,1,2,,,,,,
+3,1,3,,,,,,
+4,2,1,,,,,,
+5,2,2,,,,,,
+6,2,3,,,,,,
+7,3,1,,,,,,
+8,3,2,,,,,,
+9,3,3,,,,,,
