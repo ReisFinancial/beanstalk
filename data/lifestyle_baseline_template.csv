@@ -1,0 +1,11 @@
+country,lifestyleTypeId,category,annualAmount,source,notes
+US,1,active,1800,seed estimate (Oct 2026),
+US,2,social,4500,seed estimate (Oct 2026),
+US,3,luxury,3000,seed estimate (Oct 2026),
+US,4,digital,900,seed estimate (Oct 2026),
+US,5,culture,1200,seed estimate (Oct 2026),
+CA,1,active,1700,seed estimate (Oct 2026),
+CA,2,social,4000,seed estimate (Oct 2026),
+CA,3,luxury,2700,seed estimate (Oct 2026),
+CA,4,digital,850,seed estimate (Oct 2026),
+CA,5,culture,1100,seed estimate (Oct 2026),

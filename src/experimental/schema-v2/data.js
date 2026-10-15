@@ -50,86 +50,115 @@ export const INVESTMENT_TIERS = [
 ]
 
 // ── Cities ────────────────────────────────────────────────────────────
-// priceToRent = median price / annual rent · propertyTax as decimal
-// (e.g. 0.007 = 0.7%) · utilities is a per-city average annual home
-// utility bundle (kept separate from cityLife.utilities for now — see
-// note in trueNumberV2.js on the potential double-count).
+// Loaded from data/revised_city_costs.xlsx (Oct 2026). Working estimates,
+// not a validated dataset — see that file's Methodology + Assumptions tabs.
+// All dollars USD; Canadian rows converted at CAD_TO_USD below.
+// medianPrice = suburban all-home median · priceToRent = price ÷ annual rent
+// propertyTax as decimal · utilities = annual home utility bundle.
+
+export const CAD_TO_USD = 0.70 // mid-market, Oct 14 2026
 
 export const CITIES = [
-  { id:   1, name: 'Toronto',                                 country: 'CA', state: 'ON'  , region: 'GTA',             population:  2930000, priceToRent:    25, propertyTax: 0.0075, utilities:   4200 },
-  { id:   2, name: 'Vancouver',                               country: 'CA', state: 'BC'  , region: 'Lower Mainland',  population:   700000, priceToRent:    30, propertyTax:  0.003, utilities:   3650 },
-  { id:   3, name: 'Halifax',                                 country: 'CA', state: 'NS'  , region: 'Atlantic',        population:   440000, priceToRent:    22, propertyTax: 0.0077, utilities:   4650 },
-  { id:   4, name: 'Austin',                                  country: 'US', state: 'TX'  , region: 'Hill Country',    population:  1010000, priceToRent:    20, propertyTax:  0.016, utilities:   4250 },
-  { id:   5, name: 'Denver-Aurora-Lakewood',                  country: 'US', state: 'CO'  , region: 'Front Range',     population:  3000000, priceToRent:    21, propertyTax: 0.0055, utilities:   3700 },
-  { id:   6, name: 'Riverside-San Bernardino-Ontario',        country: 'US', state: 'CA'  , region: 'West',            population:  4700000, priceToRent:  null, propertyTax: 0.0075, utilities:   4050 },
-  { id:   7, name: 'McAllen',                                 country: 'US', state: 'TX'  , region: 'South',           population:   145000, priceToRent:  null, propertyTax:  0.018, utilities:   3850 },
-  { id:   8, name: 'Minneapolis-St. Paul-Bloomington',        country: 'US', state: 'MN'  , region: 'Midwest',         population:  3800000, priceToRent:  null, propertyTax:  0.011, utilities:   3900 },
-  { id:   9, name: 'Billings',                                country: 'US', state: 'MT'  , region: 'Rockies',         population:   120000, priceToRent:  null, propertyTax:  0.008, utilities:   3650 },
-  { id:  10, name: 'Boston-Cambridge-Newton',                 country: 'US', state: 'MA'  , region: 'Northeast',       population:  5000000, priceToRent:  null, propertyTax:  0.011, utilities:   4650 },
-  { id:  11, name: 'Boise',                                   country: 'US', state: 'ID'  , region: 'Northeast',       population:   240000, priceToRent:  null, propertyTax:  0.006, utilities:   3300 },
-  { id:  12, name: 'Calgary-Edmonton',                        country: 'CA', state: 'AB'  , region: 'Prairies',        population:  3530000, priceToRent:  null, propertyTax: 0.0066, utilities:   4450 },
-  { id:  13, name: 'Washington-Arlington-Alexandria',         country: 'US', state: 'DC'  , region: 'South',           population:  6500000, priceToRent:  null, propertyTax: 0.0085, utilities:   4700 },
-  { id:  14, name: 'Phoenix-Mesa-Chandler',                   country: 'US', state: 'AZ'  , region: 'Southwest',       population:  5200000, priceToRent:  null, propertyTax:  0.006, utilities:   4350 },
-  { id:  15, name: 'San Francisco-Oakland-Berkeley',          country: 'US', state: 'CA'  , region: 'West',            population:  4600000, priceToRent:  null, propertyTax: 0.0075, utilities:   4700 },
-  { id:  16, name: 'Chicago-Naperville-Elgin',                country: 'US', state: 'IL'  , region: 'Midwest',         population:  9400000, priceToRent:  13.2, propertyTax:  0.018, utilities:   4400 },
-  { id:  17, name: 'Nashville-Davidson-Murfressboro-Franklin', country: 'US', state: 'TN'  , region: 'South',           population:  2200000, priceToRent:  null, propertyTax: 0.0065, utilities:   3600 },
-  { id:  18, name: 'El Paso',                                 country: 'US', state: 'TX'  , region: 'South',           population:   680000, priceToRent:  null, propertyTax:  0.018, utilities:   3750 },
-  { id:  19, name: 'Philadephia-Camden-Wilmington',           country: 'US', state: 'PA'  , region: 'Northeast',       population:  6400000, priceToRent:  null, propertyTax:  0.013, utilities:   4550 },
-  { id:  20, name: 'New Orleans-Metairie',                    country: 'US', state: 'LA'  , region: 'South',           population:   970000, priceToRent:  null, propertyTax:  0.006, utilities:   4100 },
-  { id:  21, name: 'Memphis',                                 country: 'US', state: 'TN'  , region: 'South',           population:  1340000, priceToRent:  null, propertyTax:  0.011, utilities:   3550 },
-  { id:  22, name: 'New York-Newark-Jersey City',             country: 'US', state: 'NYC' , region: 'Northeast',       population: 19800000, priceToRent:  17.1, propertyTax:  0.014, utilities:   5300 },
-  { id:  23, name: 'Montreal',                                country: 'CA', state: 'QC'  , region: 'East',            population:  4600000, priceToRent:  null, propertyTax: 0.0085, utilities:   3250 },
-  { id:  24, name: 'Dallas-Fort Worth-Arlington',             country: 'US', state: 'TX'  , region: 'South',           population:  8400000, priceToRent:  null, propertyTax:  0.018, utilities:   4050 },
-  { id:  25, name: 'Houston-Pasadena-The Woodlands',          country: 'US', state: 'TX'  , region: 'South',           population:  7800000, priceToRent:  null, propertyTax:  0.018, utilities:   4250 },
-  { id:  26, name: 'Miami-Fort Lauderdale-West Palm Beach',   country: 'US', state: 'FL'  , region: 'South',           population:  6300000, priceToRent:  null, propertyTax:  0.008, utilities:   4100 },
-  { id:  27, name: 'Detroit-Warren-Dearborn',                 country: 'US', state: 'MI'  , region: 'Great Lakes',     population:  4400000, priceToRent:  null, propertyTax:  0.014, utilities:   4000 },
-  { id:  28, name: 'Seattle-Tacoma-Bellevue',                 country: 'US', state: 'WA'  , region: 'Pacifc Northwest', population:  4100000, priceToRent:  null, propertyTax: 0.0095, utilities:   4200 },
-  { id:  29, name: 'Tampa-St. Petersburg-Clearwater',         country: 'US', state: 'FL'  , region: 'Gulf Coast',      population:  3500000, priceToRent:  null, propertyTax:  0.008, utilities:   3950 },
-  { id:  30, name: 'San Diego-Chula Vista-Carlsbad',          country: 'US', state: 'CA'  , region: 'Pacific',         population:  3300000, priceToRent:  null, propertyTax: 0.0075, utilities:   4200 },
-  { id:  31, name: 'Orlando-Kissimmee-Sanford',               country: 'US', state: 'FL'  , region: 'South',           population:  2900000, priceToRent:  null, propertyTax: 0.0085, utilities:   4000 },
-  { id:  32, name: 'Baltimore-Columbia-Towson',               country: 'US', state: 'MD'  , region: 'Atlantic',        population:  2900000, priceToRent:  null, propertyTax:   0.01, utilities:   4550 },
-  { id:  33, name: 'Charlotte-Concord-Gastonia',              country: 'US', state: 'NC'  , region: 'Carolinas',       population:  2900000, priceToRent:  null, propertyTax:  0.008, utilities:   3650 },
-  { id:  34, name: 'St. Louis',                               country: 'US', state: 'MO'  , region: 'Central',         population:  2800000, priceToRent:  null, propertyTax:   0.01, utilities:   3800 },
-  { id:  35, name: 'San Antonio-New Braunfels',               country: 'US', state: 'TX'  , region: 'South',           population:  2800000, priceToRent:  null, propertyTax:  0.017, utilities:   3900 },
-  { id:  36, name: 'Las Vegas-Henderson',                     country: 'US', state: 'NV'  , region: 'South',           population:  2400000, priceToRent:  null, propertyTax:  0.005, utilities:   3750 },
-  { id:  37, name: 'Urban Honolulu',                          country: 'US', state: 'HI'  , region: 'Pacific',         population:   988702, priceToRent:  null, propertyTax: 0.0025, utilities:   5050 },
-  { id:  38, name: 'Anchorage',                               country: 'US', state: 'AK'  , region: 'Northwest',       population:   405821, priceToRent:  null, propertyTax:  0.011, utilities:   5250 },
-  { id:  39, name: 'Birmingham-Hoover',                       country: 'US', state: 'AL'  , region: 'Southeast',       population:  1200000, priceToRent:  null, propertyTax: 0.0035, utilities:   3500 },
-  { id:  40, name: 'Louisville/Jefferson County',             country: 'US', state: 'KY'  , region: 'Midwest',         population:  1400000, priceToRent:  null, propertyTax:  0.008, utilities:   3700 },
+  { id:   1, name: 'Toronto',                                  country: 'CA', state: 'ON',  region: 'GTA',              population:  2930000, medianPrice:  560000, priceToRent: 26.67, propertyTax: 0.0075, utilities: 4200 },
+  { id:   2, name: 'Vancouver',                                country: 'CA', state: 'BC',  region: 'Lower Mainland',   population:   700000, medianPrice:  735000, priceToRent: 31.25, propertyTax:  0.003, utilities: 3650 },
+  { id:   3, name: 'Halifax',                                  country: 'CA', state: 'NS',  region: 'Atlantic',         population:   440000, medianPrice:  385000, priceToRent: 24.12, propertyTax: 0.0077, utilities: 4650 },
+  { id:   4, name: 'Austin',                                   country: 'US', state: 'TX',  region: 'Hill Country',     population:  1010000, medianPrice:  440000, priceToRent:  19.3, propertyTax:  0.016, utilities: 4250 },
+  { id:   5, name: 'Denver-Aurora-Lakewood',                   country: 'US', state: 'CO',  region: 'Front Range',      population:  3000000, medianPrice:  550000, priceToRent: 21.83, propertyTax: 0.0055, utilities: 3700 },
+  { id:   6, name: 'Riverside-San Bernardino-Ontario',         country: 'US', state: 'CA',  region: 'West',             population:  4700000, medianPrice:  555000, priceToRent: 20.11, propertyTax: 0.0075, utilities: 4050 },
+  { id:   7, name: 'McAllen',                                  country: 'US', state: 'TX',  region: 'South',            population:   145000, medianPrice:  230000, priceToRent: 17.42, propertyTax:  0.018, utilities: 3850 },
+  { id:   8, name: 'Minneapolis-St. Paul-Bloomington',         country: 'US', state: 'MN',  region: 'Midwest',          population:  3800000, medianPrice:  349900, priceToRent: 17.15, propertyTax:  0.011, utilities: 3900 },
+  { id:   9, name: 'Billings',                                 country: 'US', state: 'MT',  region: 'Rockies',          population:   120000, medianPrice:  380000, priceToRent: 23.46, propertyTax:  0.008, utilities: 3650 },
+  { id:  10, name: 'Boston-Cambridge-Newton',                  country: 'US', state: 'MA',  region: 'Northeast',        population:  5000000, medianPrice:  675000, priceToRent: 18.75, propertyTax:  0.011, utilities: 4650 },
+  { id:  11, name: 'Boise',                                    country: 'US', state: 'ID',  region: 'Northeast',        population:   240000, medianPrice:  480000, priceToRent: 23.53, propertyTax:  0.006, utilities: 3300 },
+  { id:  12, name: 'Calgary-Edmonton',                         country: 'CA', state: 'AB',  region: 'Prairies',         population:  3530000, medianPrice:  336000, priceToRent:  25.0, propertyTax: 0.0066, utilities: 4450 },
+  { id:  13, name: 'Washington-Arlington-Alexandria',          country: 'US', state: 'DC',  region: 'South',            population:  6500000, medianPrice:  520000, priceToRent: 17.33, propertyTax: 0.0085, utilities: 4700 },
+  { id:  14, name: 'Phoenix-Mesa-Chandler',                    country: 'US', state: 'AZ',  region: 'Southwest',        population:  5200000, medianPrice:  445000, priceToRent: 21.81, propertyTax:  0.006, utilities: 4350 },
+  { id:  15, name: 'San Francisco-Oakland-Berkeley',           country: 'US', state: 'CA',  region: 'West',             population:  4600000, medianPrice:  930000, priceToRent: 23.48, propertyTax: 0.0075, utilities: 4700 },
+  { id:  16, name: 'Chicago-Naperville-Elgin',                 country: 'US', state: 'IL',  region: 'Midwest',          population:  9400000, medianPrice:  313000, priceToRent: 13.04, propertyTax:  0.018, utilities: 4400 },
+  { id:  17, name: 'Nashville-Davidson-Murfressboro-Franklin', country: 'US', state: 'TN',  region: 'South',            population:  2200000, medianPrice:  425000, priceToRent: 19.14, propertyTax: 0.0065, utilities: 3600 },
+  { id:  18, name: 'El Paso',                                  country: 'US', state: 'TX',  region: 'South',            population:   680000, medianPrice:  220000, priceToRent: 17.46, propertyTax:  0.018, utilities: 3750 },
+  { id:  19, name: 'Philadephia-Camden-Wilmington',            country: 'US', state: 'PA',  region: 'Northeast',        population:  6400000, medianPrice:  340000, priceToRent: 16.67, propertyTax:  0.013, utilities: 4550 },
+  { id:  20, name: 'New Orleans-Metairie',                     country: 'US', state: 'LA',  region: 'South',            population:   970000, medianPrice:  300000, priceToRent: 16.67, propertyTax:  0.006, utilities: 4100 },
+  { id:  21, name: 'Memphis',                                  country: 'US', state: 'TN',  region: 'South',            population:  1340000, medianPrice:  230000, priceToRent: 15.97, propertyTax:  0.011, utilities: 3550 },
+  { id:  22, name: 'New York-Newark-Jersey City',              country: 'US', state: 'NYC', region: 'Northeast',        population: 19800000, medianPrice:  650000, priceToRent: 16.93, propertyTax:  0.014, utilities: 5300 },
+  { id:  23, name: 'Montreal',                                 country: 'CA', state: 'QC',  region: 'East',             population:  4600000, medianPrice:  406000, priceToRent: 29.29, propertyTax: 0.0085, utilities: 3250 },
+  { id:  24, name: 'Dallas-Fort Worth-Arlington',              country: 'US', state: 'TX',  region: 'South',            population:  8400000, medianPrice:  370000, priceToRent: 18.14, propertyTax:  0.018, utilities: 4050 },
+  { id:  25, name: 'Houston-Pasadena-The Woodlands',           country: 'US', state: 'TX',  region: 'South',            population:  7800000, medianPrice:  315000, priceToRent: 15.91, propertyTax:  0.018, utilities: 4250 },
+  { id:  26, name: 'Miami-Fort Lauderdale-West Palm Beach',    country: 'US', state: 'FL',  region: 'South',            population:  6300000, medianPrice:  475000, priceToRent: 15.22, propertyTax:  0.008, utilities: 4100 },
+  { id:  27, name: 'Detroit-Warren-Dearborn',                  country: 'US', state: 'MI',  region: 'Great Lakes',      population:  4400000, medianPrice:  230000, priceToRent: 14.74, propertyTax:  0.014, utilities: 4000 },
+  { id:  28, name: 'Seattle-Tacoma-Bellevue',                  country: 'US', state: 'WA',  region: 'Pacifc Northwest', population:  4100000, medianPrice:  635000, priceToRent: 21.17, propertyTax: 0.0095, utilities: 4200 },
+  { id:  29, name: 'Tampa-St. Petersburg-Clearwater',          country: 'US', state: 'FL',  region: 'Gulf Coast',       population:  3500000, medianPrice:  345000, priceToRent: 15.13, propertyTax:  0.008, utilities: 3950 },
+  { id:  30, name: 'San Diego-Chula Vista-Carlsbad',           country: 'US', state: 'CA',  region: 'Pacific',          population:  3300000, medianPrice:  875000, priceToRent: 25.14, propertyTax: 0.0075, utilities: 4200 },
+  { id:  31, name: 'Orlando-Kissimmee-Sanford',                country: 'US', state: 'FL',  region: 'South',            population:  2900000, medianPrice:  375800, priceToRent:  17.4, propertyTax: 0.0085, utilities: 4000 },
+  { id:  32, name: 'Baltimore-Columbia-Towson',                country: 'US', state: 'MD',  region: 'Atlantic',         population:  2900000, medianPrice:  360000, priceToRent: 17.64, propertyTax:   0.01, utilities: 4550 },
+  { id:  33, name: 'Charlotte-Concord-Gastonia',               country: 'US', state: 'NC',  region: 'Carolinas',        population:  2900000, medianPrice:  375000, priceToRent: 18.38, propertyTax:  0.008, utilities: 3650 },
+  { id:  34, name: 'St. Louis',                                country: 'US', state: 'MO',  region: 'Central',          population:  2800000, medianPrice:  235000, priceToRent: 15.06, propertyTax:   0.01, utilities: 3800 },
+  { id:  35, name: 'San Antonio-New Braunfels',                country: 'US', state: 'TX',  region: 'South',            population:  2800000, medianPrice:  290000, priceToRent: 17.26, propertyTax:  0.017, utilities: 3900 },
+  { id:  36, name: 'Las Vegas-Henderson',                      country: 'US', state: 'NV',  region: 'South',            population:  2400000, medianPrice:  415000, priceToRent: 20.34, propertyTax:  0.005, utilities: 3750 },
+  { id:  37, name: 'Urban Honolulu',                           country: 'US', state: 'HI',  region: 'Pacific',          population:   988702, medianPrice:  750000, priceToRent: 29.76, propertyTax: 0.0025, utilities: 5050 },
+  { id:  38, name: 'Anchorage',                                country: 'US', state: 'AK',  region: 'Northwest',        population:   405821, medianPrice:  400000, priceToRent: 20.83, propertyTax:  0.011, utilities: 5250 },
+  { id:  39, name: 'Birmingham-Hoover',                        country: 'US', state: 'AL',  region: 'Southeast',        population:  1200000, medianPrice:  220000, priceToRent: 14.67, propertyTax: 0.0035, utilities: 3500 },
+  { id:  40, name: 'Louisville/Jefferson County',              country: 'US', state: 'KY',  region: 'Midwest',          population:  1400000, medianPrice:  255000, priceToRent: 16.35, propertyTax:  0.008, utilities: 3700 },
 ]
 
-// Base cost-of-living per city (annual USD).
+// Base cost-of-living per city (annual USD). Food + transport are national
+// placeholders (no city differentiation yet) converted from monthly figures.
 export const CITY_LIFE = [
-  { id: 1, cityId: 1, food: 5200, transport: 4800, utilities: 3600 },
-  { id: 2, cityId: 2, food: 5400, transport: 4200, utilities: 2400 },
-  { id: 3, cityId: 3, food: 4700, transport: 6900, utilities: 2800 },
-  { id: 4, cityId: 4, food: 4900, transport: 8400, utilities: 3000 },
-  { id: 5, cityId: 5, food: 5000, transport: 7800, utilities: 2900 },
+  { id:  1, cityId:  1, food:  6130, transport: 11530, utilities: 4200 },
+  { id:  2, cityId:  2, food:  6130, transport: 11530, utilities: 3650 },
+  { id:  3, cityId:  3, food:  6130, transport: 11530, utilities: 4650 },
+  { id:  4, cityId:  4, food:  7140, transport: 11580, utilities: 4250 },
+  { id:  5, cityId:  5, food:  7140, transport: 11580, utilities: 3700 },
+  { id:  6, cityId:  6, food:  7140, transport: 11580, utilities: 4050 },
+  { id:  7, cityId:  7, food:  7140, transport: 11580, utilities: 3850 },
+  { id:  8, cityId:  8, food:  7140, transport: 11580, utilities: 3900 },
+  { id:  9, cityId:  9, food:  7140, transport: 11580, utilities: 3650 },
+  { id: 10, cityId: 10, food:  7140, transport: 11580, utilities: 4650 },
+  { id: 11, cityId: 11, food:  7140, transport: 11580, utilities: 3300 },
+  { id: 12, cityId: 12, food:  6130, transport: 11530, utilities: 4450 },
+  { id: 13, cityId: 13, food:  7140, transport: 11580, utilities: 4700 },
+  { id: 14, cityId: 14, food:  7140, transport: 11580, utilities: 4350 },
+  { id: 15, cityId: 15, food:  7140, transport: 11580, utilities: 4700 },
+  { id: 16, cityId: 16, food:  7140, transport: 11580, utilities: 4400 },
+  { id: 17, cityId: 17, food:  7140, transport: 11580, utilities: 3600 },
+  { id: 18, cityId: 18, food:  7140, transport: 11580, utilities: 3750 },
+  { id: 19, cityId: 19, food:  7140, transport: 11580, utilities: 4550 },
+  { id: 20, cityId: 20, food:  7140, transport: 11580, utilities: 4100 },
+  { id: 21, cityId: 21, food:  7140, transport: 11580, utilities: 3550 },
+  { id: 22, cityId: 22, food:  7140, transport: 11580, utilities: 5300 },
+  { id: 23, cityId: 23, food:  6130, transport: 11530, utilities: 3250 },
+  { id: 24, cityId: 24, food:  7140, transport: 11580, utilities: 4050 },
+  { id: 25, cityId: 25, food:  7140, transport: 11580, utilities: 4250 },
+  { id: 26, cityId: 26, food:  7140, transport: 11580, utilities: 4100 },
+  { id: 27, cityId: 27, food:  7140, transport: 11580, utilities: 4000 },
+  { id: 28, cityId: 28, food:  7140, transport: 11580, utilities: 4200 },
+  { id: 29, cityId: 29, food:  7140, transport: 11580, utilities: 3950 },
+  { id: 30, cityId: 30, food:  7140, transport: 11580, utilities: 4200 },
+  { id: 31, cityId: 31, food:  7140, transport: 11580, utilities: 4000 },
+  { id: 32, cityId: 32, food:  7140, transport: 11580, utilities: 4550 },
+  { id: 33, cityId: 33, food:  7140, transport: 11580, utilities: 3650 },
+  { id: 34, cityId: 34, food:  7140, transport: 11580, utilities: 3800 },
+  { id: 35, cityId: 35, food:  7140, transport: 11580, utilities: 3900 },
+  { id: 36, cityId: 36, food:  7140, transport: 11580, utilities: 3750 },
+  { id: 37, cityId: 37, food:  7140, transport: 11580, utilities: 5050 },
+  { id: 38, cityId: 38, food:  7140, transport: 11580, utilities: 5250 },
+  { id: 39, cityId: 39, food:  7140, transport: 11580, utilities: 3500 },
+  { id: 40, cityId: 40, food:  7140, transport: 11580, utilities: 3700 },
 ]
 
-// Median dwelling price by city × density.
-export const REAL_ESTATE = [
-  // Toronto
-  { id:  1, cityId: 1, densityTierId: 1, amountPrice:  950000 },
-  { id:  2, cityId: 1, densityTierId: 2, amountPrice:  720000 },
-  { id:  3, cityId: 1, densityTierId: 3, amountPrice:  550000 },
-  // Vancouver
-  { id:  4, cityId: 2, densityTierId: 1, amountPrice: 1250000 },
-  { id:  5, cityId: 2, densityTierId: 2, amountPrice:  950000 },
-  { id:  6, cityId: 2, densityTierId: 3, amountPrice:  750000 },
-  // Halifax
-  { id:  7, cityId: 3, densityTierId: 1, amountPrice:  620000 },
-  { id:  8, cityId: 3, densityTierId: 2, amountPrice:  480000 },
-  { id:  9, cityId: 3, densityTierId: 3, amountPrice:  360000 },
-  // Austin
-  { id: 10, cityId: 4, densityTierId: 1, amountPrice:  680000 },
-  { id: 11, cityId: 4, densityTierId: 2, amountPrice:  520000 },
-  { id: 12, cityId: 4, densityTierId: 3, amountPrice:  380000 },
-  // Denver
-  { id: 13, cityId: 5, densityTierId: 1, amountPrice:  720000 },
-  { id: 14, cityId: 5, densityTierId: 2, amountPrice:  560000 },
-  { id: 15, cityId: 5, densityTierId: 3, amountPrice:  420000 },
-]
+// Dwelling price by city × density, derived from each city's suburban
+// medianPrice. Edit medianPrice (or the multipliers) and every row follows.
+// To pin a real figure for one city + density, replace the generated row.
+export const DENSITY_PRICE_MULTIPLIERS = { 1: 1.30, 2: 1.00, 3: 0.75 } // urban / suburbs / rural
+
+export const REAL_ESTATE = CITIES.flatMap((c) =>
+  DENSITY_TIERS.map((d) => ({
+    id:            (c.id - 1) * DENSITY_TIERS.length + d.id,
+    cityId:        c.id,
+    densityTierId: d.id,
+    amountPrice:   Math.round((c.medianPrice * DENSITY_PRICE_MULTIPLIERS[d.id]) / 1000) * 1000,
+  })),
+)
 
 // Discrete activities per city × lifestyleType. `amount` is per-occurrence
 // USD; `frequency` is occurrences per year. Annual base = amount × frequency.
@@ -167,6 +196,24 @@ export const LIFESTYLES = [
 // Empty in v1 — the tier multiplier from LIFESTYLE_TIERS is used as the
 // blanket fallback. Populate here to override specific rows later.
 export const LIFESTYLE_TABLE = []
+
+// Country-level fallback for discretionary spend — annual USD per category
+// at the "balanced" tier. Used for any city × category with no activity rows
+// in LIFESTYLES, scaled by the city's optional `lifestyleIndex` (1.00 =
+// national average; omit on a city row to use 1.00). Loaded from
+// data/lifestyle_baseline_template.csv — seed estimates, Oct 2026.
+export const LIFESTYLE_BASELINES = [
+  { country: 'US', lifestyleTypeId: 1, annualAmount: 1800 }, // active
+  { country: 'US', lifestyleTypeId: 2, annualAmount: 4500 }, // social
+  { country: 'US', lifestyleTypeId: 3, annualAmount: 3000 }, // luxury
+  { country: 'US', lifestyleTypeId: 4, annualAmount:  900 }, // digital
+  { country: 'US', lifestyleTypeId: 5, annualAmount: 1200 }, // culture
+  { country: 'CA', lifestyleTypeId: 1, annualAmount: 1700 },
+  { country: 'CA', lifestyleTypeId: 2, annualAmount: 4000 },
+  { country: 'CA', lifestyleTypeId: 3, annualAmount: 2700 },
+  { country: 'CA', lifestyleTypeId: 4, annualAmount:  850 },
+  { country: 'CA', lifestyleTypeId: 5, annualAmount: 1100 },
+]
 
 // Combination map — placeholder for a future v2 lookup that ties
 // (security tier × invest tier) to a target multiple / savings-rate goal.

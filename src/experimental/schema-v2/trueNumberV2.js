@@ -45,7 +45,7 @@
 
 import {
   CITIES, CITY_LIFE, REAL_ESTATE, DENSITY_TIERS,
-  LIFESTYLES, LIFESTYLE_TIERS, LIFESTYLE_TABLE, LIFESTYLE_TYPES,
+  LIFESTYLES, LIFESTYLE_TIERS, LIFESTYLE_TABLE, LIFESTYLE_TYPES, LIFESTYLE_BASELINES,
   FINANCIAL_SECURITY_TIERS, INVESTMENT_TIERS,
 } from './data.js'
 
@@ -206,38 +206,65 @@ function computeShelter(city, realEstate, mode, currentHomeValue = 0) {
 
 /**
  * Discretionary spend for the chosen lifestyle types in the chosen city,
- * scaled by the user's intensity tier. Per-activity overrides in
- * LIFESTYLE_TABLE win over the amount × frequency baseline when present.
+ * scaled by the user's intensity tier. Resolved per category, in order:
+ *
+ *   1. activities — LIFESTYLES rows for this city × category (amount ×
+ *      frequency; per-activity LIFESTYLE_TABLE overrides win when present)
+ *   2. baseline   — LIFESTYLE_BASELINES[country × category] × city.lifestyleIndex
+ *                   (index defaults to 1.00). Flagged as estimated.
+ *   3. none       — no data at all → $0, flagged as estimated.
  */
-function computeDiscretionary(cityId, lifestyleTypeIds, lifestyleTier) {
-  const chosenTypes = new Set(lifestyleTypeIds || [])
+function computeDiscretionary(city, lifestyleTypeIds, lifestyleTier) {
   const overridesByActivity = new Map(
     LIFESTYLE_TABLE.map((o) => [`${o.lifestyleActivityId}:${o.lifestyleTierId}`, o]),
   )
-  const rows = LIFESTYLES.filter((a) => a.cityId === cityId && chosenTypes.has(a.lifestyleTypeId))
+  const index = Number(city.lifestyleIndex) > 0 ? Number(city.lifestyleIndex) : 1
+  const breakdown = []
+  const estimatedCategories = []
   let base = 0
-  const breakdown = rows.map((a) => {
-    const override = overridesByActivity.get(`${a.id}:${lifestyleTier.lifestyleTiers}`)
-    const perOccurrence = override ? Number(override.lifestyleBudget) : Number(a.amount)
-    const annualForRow = perOccurrence * (Number(a.frequency) || 0)
-    base += annualForRow
-    const type = LIFESTYLE_TYPES.find((t) => t.id === a.lifestyleTypeId)
-    return {
-      activity:    a.activity,
-      category:    type?.category ?? null,
-      perOccurrence,
-      frequency:   a.frequency,
-      annual:      annualForRow,
-      overridden:  !!override,
+  let activitiesConsidered = 0
+
+  for (const typeId of new Set(lifestyleTypeIds || [])) {
+    const category = LIFESTYLE_TYPES.find((t) => t.id === typeId)?.category ?? null
+    const rows = LIFESTYLES.filter((a) => a.cityId === city.id && a.lifestyleTypeId === typeId)
+
+    if (rows.length > 0) {
+      for (const a of rows) {
+        const override = overridesByActivity.get(`${a.id}:${lifestyleTier.lifestyleTiers}`)
+        const perOccurrence = override ? Number(override.lifestyleBudget) : Number(a.amount)
+        const annualForRow = perOccurrence * (Number(a.frequency) || 0)
+        base += annualForRow
+        activitiesConsidered += 1
+        breakdown.push({
+          activity: a.activity, category, source: 'activities',
+          perOccurrence, frequency: a.frequency, annual: annualForRow, overridden: !!override,
+        })
+      }
+      continue
     }
-  })
+
+    const baseline = LIFESTYLE_BASELINES.find(
+      (b) => b.country === city.country && b.lifestyleTypeId === typeId,
+    )
+    const annualForRow = baseline ? Number(baseline.annualAmount) * index : 0
+    base += annualForRow
+    estimatedCategories.push(category)
+    breakdown.push({
+      activity: `${category} (${baseline ? `${city.country} baseline × ${index}` : 'no data'})`,
+      category, source: baseline ? 'baseline' : 'none',
+      perOccurrence: null, frequency: null, annual: annualForRow, overridden: false,
+    })
+  }
+
   const multiple = Number(lifestyleTier.multiple) || 1
   return {
     annual: base * multiple,
     baseAnnual: base,
     tier: lifestyleTier.intensityTier,
     tierMultiplier: multiple,
-    activitiesConsidered: rows.length,
+    lifestyleIndex: index,
+    activitiesConsidered,
+    estimatedCategories,
     breakdown,
   }
 }
@@ -270,7 +297,7 @@ export function computeTrueNumberV2(input) {
   // Component annuals.
   const necessities  = computeNecessities(cityLife)
   const shelter      = computeShelter(city, realEstate, housingMode, currentHomeValue)
-  const discretion   = computeDiscretionary(cityId, lifestyleTypeIds, lifestyleRow)
+  const discretion   = computeDiscretionary(city, lifestyleTypeIds, lifestyleRow)
 
   // Blend + apply the security multiplier over the whole envelope. The
   // multiplier is applied AFTER shelter because "abundant" security means
@@ -299,6 +326,11 @@ export function computeTrueNumberV2(input) {
     currentNetWorth:  Math.round(currentNetWorth),
     gap:              Math.round(gap),
     percentToTarget,
+
+    // True when any lifestyle category fell back to a country baseline (or
+    // had no data at all) — drives the "estimated" badge in comparisons.
+    isEstimated:          discretion.estimatedCategories.length > 0,
+    estimatedCategories:  discretion.estimatedCategories,
 
     // What it costs to live this life for one year at today's prices
     annualSpending:   Math.round(scaledAnnual),
