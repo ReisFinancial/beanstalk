@@ -1,0 +1,7 @@
+country,incomeKind,effectiveRate,source,notes
+US,active,0.25,seed estimate (Nov 2026),Flat MVP placeholder; refine by province/state later
+US,durable_rental,0.25,seed estimate (Nov 2026),Flat MVP placeholder; refine by province/state later
+US,durable_investment,0.15,seed estimate (Nov 2026),Flat MVP placeholder; refine by province/state later
+CA,active,0.3,seed estimate (Nov 2026),Flat MVP placeholder; refine by province/state later
+CA,durable_rental,0.3,seed estimate (Nov 2026),Flat MVP placeholder; refine by province/state later
+CA,durable_investment,0.2,seed estimate (Nov 2026),Flat MVP placeholder; refine by province/state later

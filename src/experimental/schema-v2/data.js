@@ -75,18 +75,18 @@ export const CITIES = [
   { id:  14, name: 'Phoenix-Mesa-Chandler',                    country: 'US', state: 'AZ',  region: 'Southwest',        population:  5200000, medianPrice:  445000, priceToRent: 21.81, propertyTax:  0.006, utilities: 4350 },
   { id:  15, name: 'San Francisco-Oakland-Berkeley',           country: 'US', state: 'CA',  region: 'West',             population:  4600000, medianPrice:  930000, priceToRent: 23.48, propertyTax: 0.0075, utilities: 4700 },
   { id:  16, name: 'Chicago-Naperville-Elgin',                 country: 'US', state: 'IL',  region: 'Midwest',          population:  9400000, medianPrice:  313000, priceToRent: 13.04, propertyTax:  0.018, utilities: 4400 },
-  { id:  17, name: 'Nashville-Davidson-Murfressboro-Franklin', country: 'US', state: 'TN',  region: 'South',            population:  2200000, medianPrice:  425000, priceToRent: 19.14, propertyTax: 0.0065, utilities: 3600 },
+  { id:  17, name: 'Nashville-Davidson-Murfreesboro-Franklin', country: 'US', state: 'TN',  region: 'South',            population:  2200000, medianPrice:  425000, priceToRent: 19.14, propertyTax: 0.0065, utilities: 3600 },
   { id:  18, name: 'El Paso',                                  country: 'US', state: 'TX',  region: 'South',            population:   680000, medianPrice:  220000, priceToRent: 17.46, propertyTax:  0.018, utilities: 3750 },
-  { id:  19, name: 'Philadephia-Camden-Wilmington',            country: 'US', state: 'PA',  region: 'Northeast',        population:  6400000, medianPrice:  340000, priceToRent: 16.67, propertyTax:  0.013, utilities: 4550 },
+  { id:  19, name: 'Philadelphia-Camden-Wilmington',            country: 'US', state: 'PA',  region: 'Northeast',        population:  6400000, medianPrice:  340000, priceToRent: 16.67, propertyTax:  0.013, utilities: 4550 },
   { id:  20, name: 'New Orleans-Metairie',                     country: 'US', state: 'LA',  region: 'South',            population:   970000, medianPrice:  300000, priceToRent: 16.67, propertyTax:  0.006, utilities: 4100 },
   { id:  21, name: 'Memphis',                                  country: 'US', state: 'TN',  region: 'South',            population:  1340000, medianPrice:  230000, priceToRent: 15.97, propertyTax:  0.011, utilities: 3550 },
-  { id:  22, name: 'New York-Newark-Jersey City',              country: 'US', state: 'NYC', region: 'Northeast',        population: 19800000, medianPrice:  650000, priceToRent: 16.93, propertyTax:  0.014, utilities: 5300 },
+  { id:  22, name: 'New York-Newark-Jersey City',              country: 'US', state: 'NY',  region: 'Northeast',        population: 19800000, medianPrice:  650000, priceToRent: 16.93, propertyTax:  0.014, utilities: 5300 },
   { id:  23, name: 'Montreal',                                 country: 'CA', state: 'QC',  region: 'East',             population:  4600000, medianPrice:  406000, priceToRent: 29.29, propertyTax: 0.0085, utilities: 3250 },
   { id:  24, name: 'Dallas-Fort Worth-Arlington',              country: 'US', state: 'TX',  region: 'South',            population:  8400000, medianPrice:  370000, priceToRent: 18.14, propertyTax:  0.018, utilities: 4050 },
   { id:  25, name: 'Houston-Pasadena-The Woodlands',           country: 'US', state: 'TX',  region: 'South',            population:  7800000, medianPrice:  315000, priceToRent: 15.91, propertyTax:  0.018, utilities: 4250 },
   { id:  26, name: 'Miami-Fort Lauderdale-West Palm Beach',    country: 'US', state: 'FL',  region: 'South',            population:  6300000, medianPrice:  475000, priceToRent: 15.22, propertyTax:  0.008, utilities: 4100 },
   { id:  27, name: 'Detroit-Warren-Dearborn',                  country: 'US', state: 'MI',  region: 'Great Lakes',      population:  4400000, medianPrice:  230000, priceToRent: 14.74, propertyTax:  0.014, utilities: 4000 },
-  { id:  28, name: 'Seattle-Tacoma-Bellevue',                  country: 'US', state: 'WA',  region: 'Pacifc Northwest', population:  4100000, medianPrice:  635000, priceToRent: 21.17, propertyTax: 0.0095, utilities: 4200 },
+  { id:  28, name: 'Seattle-Tacoma-Bellevue',                  country: 'US', state: 'WA',  region: 'Pacific Northwest', population:  4100000, medianPrice:  635000, priceToRent: 21.17, propertyTax: 0.0095, utilities: 4200 },
   { id:  29, name: 'Tampa-St. Petersburg-Clearwater',          country: 'US', state: 'FL',  region: 'Gulf Coast',       population:  3500000, medianPrice:  345000, priceToRent: 15.13, propertyTax:  0.008, utilities: 3950 },
   { id:  30, name: 'San Diego-Chula Vista-Carlsbad',           country: 'US', state: 'CA',  region: 'Pacific',          population:  3300000, medianPrice:  875000, priceToRent: 25.14, propertyTax: 0.0075, utilities: 4200 },
   { id:  31, name: 'Orlando-Kissimmee-Sanford',                country: 'US', state: 'FL',  region: 'South',            population:  2900000, medianPrice:  375800, priceToRent:  17.4, propertyTax: 0.0085, utilities: 4000 },
@@ -145,6 +145,43 @@ export const CITY_LIFE = [
   { id: 39, cityId: 39, food:  7140, transport: 11580, utilities: 3500 },
   { id: 40, cityId: 40, food:  7140, transport: 11580, utilities: 3700 },
 ]
+
+// ── National-average fallback cities ─────────────────────────────────
+// For users whose ideal city isn't one of the listed metros. Population-
+// weighted averages of the listed cities in each country, appended to
+// CITIES / CITY_LIFE so the calc treats them like any other city (and
+// REAL_ESTATE below generates their density rows). Flagged isNationalAverage
+// so pickers can label them and results can show an "estimated" badge.
+
+export const NATIONAL_AVERAGE_CITY_IDS = { US: 901, CA: 902 }
+
+for (const [country, id] of Object.entries(NATIONAL_AVERAGE_CITY_IDS)) {
+  const listed = CITIES.filter((c) => c.country === country && !c.isNationalAverage)
+  const totalPop = listed.reduce((s, c) => s + c.population, 0)
+  const cityAvg = (field) => listed.reduce((s, c) => s + c[field] * c.population, 0) / totalPop
+  const life = CITY_LIFE.filter((l) => listed.some((c) => c.id === l.cityId))
+  const lifeAvg = (field) =>
+    life.reduce((s, l) => s + l[field] * listed.find((c) => c.id === l.cityId).population, 0) / totalPop
+
+  CITIES.push({
+    id, name: `${country === 'US' ? 'United States' : 'Canada'} (national average)`,
+    country, state: '', region: 'National', population: totalPop,
+    medianPrice: Math.round(cityAvg('medianPrice') / 1000) * 1000,
+    priceToRent: Math.round(cityAvg('priceToRent') * 100) / 100,
+    propertyTax: Math.round(cityAvg('propertyTax') * 10000) / 10000,
+    utilities:   Math.round(cityAvg('utilities') / 10) * 10,
+    isNationalAverage: true,
+  })
+  CITY_LIFE.push({
+    id, cityId: id,
+    food:      Math.round(lifeAvg('food') / 10) * 10,
+    transport: Math.round(lifeAvg('transport') / 10) * 10,
+    utilities: Math.round(lifeAvg('utilities') / 10) * 10,
+  })
+}
+
+/** The real metros only — use this for city pickers. */
+export const LISTED_CITIES = CITIES.filter((c) => !c.isNationalAverage)
 
 // Dwelling price by city × density, derived from each city's suburban
 // medianPrice. Edit medianPrice (or the multipliers) and every row follows.

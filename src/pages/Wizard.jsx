@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import BeanstalkMark from '../components/BeanstalkMark.jsx'
 import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
+import { LISTED_CITIES, NATIONAL_AVERAGE_CITY_IDS } from '../experimental/schema-v2/data.js'
+import { metrosNear } from '../experimental/schema-v2/regions.js'
 
 const STEPS = [
   { id: 'welcome',    title: 'Welcome',     emoji: '👋' },
@@ -214,6 +216,7 @@ function StepWelcome({ profile, updateSection }) {
                     if (!HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD.has(o.id)) {
                       patch.neighbourhoodType = ''
                     }
+                    if (o.id !== 'upgrade') patch.currentHomeValue = ''
                     updateSection('personal', patch)
                   }}
                   className={`text-left rounded-2xl border-2 p-3 transition ${
@@ -262,8 +265,33 @@ function StepWelcome({ profile, updateSection }) {
                 })}
               </div>
               <p className="mt-2 text-[11px] text-ink-400">
-                Feeds the dwelling-cost dataset once it's live — until then it's stored on your profile for the model to read.
+                Prices your ideal home: urban, suburban, and rural homes cost different amounts in every city.
               </p>
+
+              {profile.personal.housingSituation === 'upgrade' && (
+                <div className="mt-4">
+                  <label className="label" htmlFor="current-home-value">
+                    What's your current home worth? <span className="text-ink-400 font-normal">(rough estimate)</span>
+                  </label>
+                  <div className="relative max-w-[240px]">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">$</span>
+                    <input
+                      id="current-home-value"
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      step="1000"
+                      className="input pl-8"
+                      placeholder="e.g. 650000"
+                      value={profile.personal.currentHomeValue ?? ''}
+                      onChange={(e) => updateSection('personal', { currentHomeValue: e.target.value })}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-400">
+                    We only count the difference between this and your ideal home.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -397,6 +425,13 @@ function StepPersonal({ profile, updateSection }) {
           onChange={(patch) => updateSection('personal', patch)}
         />
 
+        <IdealCityPicker
+          country={profile.personal.country}
+          region={profile.personal.region}
+          value={profile.personal.idealCityId}
+          onChange={(idealCityId) => updateSection('personal', { idealCityId })}
+        />
+
         {/* Future life stage — do you want a different life stage in ~5 years */}
         <div>
           <p className="label">Do you see your life entering a new stage within the next 5 to 10 years?</p>
@@ -456,6 +491,53 @@ function StepPersonal({ profile, updateSection }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// Where the user WANTS to live — prices the True Number. Metros in their
+// current province/state are listed first as a convenience; any listed
+// metro can be picked, plus a national-average option for "somewhere else".
+// Stored as a string id on profile.personal.idealCityId ('' = not chosen).
+function IdealCityPicker({ country, region, value, onChange }) {
+  const near = metrosNear(country, region)
+  const nearIds = new Set(near.map((c) => c.id))
+  const byName = (a, b) => a.name.localeCompare(b.name)
+  const rest = (code) =>
+    LISTED_CITIES.filter((c) => c.country === code && !nearIds.has(c.id)).sort(byName)
+  const shortName = (c) => `${c.name.split('-')[0]}, ${c.state}`
+
+  return (
+    <div>
+      <label className="label" htmlFor="ideal-city">Where do you want to live?</label>
+      <select
+        id="ideal-city"
+        className="input"
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">Select a city…</option>
+        {near.length > 0 && (
+          <optgroup label="Near you">
+            {near.sort(byName).map((c) => (
+              <option key={c.id} value={String(c.id)}>{shortName(c)}</option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Canada">
+          {rest('CA').map((c) => <option key={c.id} value={String(c.id)}>{shortName(c)}</option>)}
+        </optgroup>
+        <optgroup label="United States">
+          {rest('US').map((c) => <option key={c.id} value={String(c.id)}>{shortName(c)}</option>)}
+        </optgroup>
+        <optgroup label="Somewhere else">
+          <option value={String(NATIONAL_AVERAGE_CITY_IDS.CA)}>Elsewhere in Canada (national average)</option>
+          <option value={String(NATIONAL_AVERAGE_CITY_IDS.US)}>Elsewhere in the US (national average)</option>
+        </optgroup>
+      </select>
+      <p className="mt-1 text-[11px] text-ink-400">
+        Your True Number is priced for the life you want — pick the place you'd live if you could.
+      </p>
     </div>
   )
 }
@@ -828,6 +910,13 @@ function StepReview({ profile }) {
             })()} · {stageLabel}
             {locLabel ? ` · ${locLabel}` : ''}
           </p>
+          {(() => {
+            const ideal = [...LISTED_CITIES, { id: NATIONAL_AVERAGE_CITY_IDS.CA, name: 'Elsewhere in Canada' }, { id: NATIONAL_AVERAGE_CITY_IDS.US, name: 'Elsewhere in the US' }]
+              .find((c) => String(c.id) === String(profile.personal.idealCityId))
+            return ideal ? (
+              <p className="text-xs text-ink-500 mt-1">Ideal city: {ideal.name.split('-')[0]}</p>
+            ) : null
+          })()}
           {profile.personal.wantsLifeStageChange && futureStages.length > 0 && (
             <p className="text-xs text-ink-500 mt-1">
               In 5–10 years: {futureStages.join(', ')}

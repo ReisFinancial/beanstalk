@@ -157,11 +157,14 @@ function computeShelter(city, realEstate, mode, currentHomeValue = 0) {
     }
   }
 
-  // Every owner mode shares the same lifelong carry line.
+  // Every owner mode shares the same lifelong carry line. Utilities are NOT
+  // added here — they're already in necessities (cityLife.utilities), which
+  // renters and owners both pay. cityUtilities stays 0 in the output so the
+  // breakdown shape is unchanged.
   const propertyTaxAnnual = price * (Number(city.propertyTax) || 0)
-  const cityUtilities     = Number(city.utilities) || 0
+  const cityUtilities     = 0
   const maintenanceAnnual = price * MAINTENANCE_RATE
-  const carryAnnual = propertyTaxAnnual + cityUtilities + maintenanceAnnual
+  const carryAnnual = propertyTaxAnnual + maintenanceAnnual
 
   if (mode === 'own_ideal') {
     return {
@@ -329,7 +332,8 @@ export function computeTrueNumberV2(input) {
 
     // True when any lifestyle category fell back to a country baseline (or
     // had no data at all) — drives the "estimated" badge in comparisons.
-    isEstimated:          discretion.estimatedCategories.length > 0,
+    isEstimated:          discretion.estimatedCategories.length > 0 || !!city.isNationalAverage,
+    isNationalAverage:    !!city.isNationalAverage,
     estimatedCategories:  discretion.estimatedCategories,
 
     // What it costs to live this life for one year at today's prices

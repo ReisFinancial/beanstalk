@@ -29,6 +29,12 @@ const emptyProfile = {
     // Only relevant when housingSituation is 'need_home' or 'upgrade'; used
     // to pick the right dwelling-cost bucket once that dataset is live.
     neighbourhoodType: '',      // 'urban' | 'suburbs' | 'rural'
+    // Only when housingSituation === 'upgrade' — rough value of the home they
+    // own today, in their current country's currency. String for the input.
+    currentHomeValue: '',
+    // Where they WANT to live (CITIES.id from schema-v2, as a string). Prices
+    // the True Number. '' = not chosen → adapter falls back to national avg.
+    idealCityId: '',
     wantsLifeStageChange: false, // does the user want a different life stage in ~5 years
     futureLifeStage: [],        // multi-select of what they'd like to be in 5 years
   },
