@@ -1,95 +1,95 @@
 import { useMemo, useState } from 'react'
-import { estimateIdealSpending } from '../utils/idealSpending.js'
-import { computeTrueNumber } from '../utils/trueNumber.js'
+import { Link } from 'react-router-dom'
+import { computeTrueNumberV2 } from '../experimental/schema-v2/trueNumberV2.js'
+import { wizardToV2Input } from '../experimental/schema-v2/wizardToV2Input.js'
+import { FINANCIAL_SECURITY_TIERS } from '../experimental/schema-v2/data.js'
+import { moneyFormatter, fmtYears } from '../utils/displayMoney.js'
 
 /**
- * The Dashboard hero card. Reads the user's profile, runs the ideal-life
- * spending estimator + True Number NPV math, and renders the headline
- * number, progress vs current net worth, gap, Nx multiplier, and years
- * to target — plus an expandable "why this number" panel showing the
- * assumptions.
+ * The Dashboard hero card — True Number v2.
  *
- * A mode toggle at the top switches between two scenarios:
- *   Coast        — user works through their normal working years and
- *                  retires at the pension's age (or the default).
- *   Retire today — user stops working immediately; every year from
- *                  now to age 90 draws from wealth at retirement rates.
+ * Maps the wizard profile into v2 inputs (wizardToV2Input), runs
+ * computeTrueNumberV2, and renders the headline, progress vs today's liquid
+ * net worth, gap, years to target, and a "where does this number come
+ * from?" breakdown. Lists every answer the adapter had to assume so the
+ * user can go fix it. Displays in the user's own currency (the model runs
+ * in USD).
  */
+
+const HOUSING_LABEL = {
+  need_home:   'Buying your ideal home',
+  upgrade:     'Upgrading your home',
+  own_ideal:   'Already in your ideal home',
+  prefer_rent: 'Renting',
+}
+const DENSITY_LABEL = { urban: 'Urban', suburbs: 'Suburbs', rural: 'Rural' }
+
+const DEFAULT_LABEL = {
+  idealCity:          'Ideal city — using a national average',
+  housingSituation:   'Housing situation — assumed buying a home',
+  neighbourhoodType:  'Neighbourhood — assumed suburbs',
+  currentHomeValue:   'Current home value — not entered, so the full price is counted',
+  socialIntensity:    'Social intensity — assumed balanced',
+  hobbyRanking:       'Hobbies — using the default order (active, social, luxury)',
+  financialSecurity:  'Financial security — assumed comfortable',
+  investmentApproach: 'Investment approach — assumed balanced',
+  birthDate:          'Age — assumed 35',
+}
+
 export default function TrueNumberCard({ profile }) {
   const [showDetails, setShowDetails] = useState(false)
-  const [mode, setMode] = useState('coast') // 'coast' | 'retireToday'
 
-  const spending = useMemo(() => estimateIdealSpending(profile), [profile])
-  // Compute both scenarios so the toggle is instant.
-  const coastNumber = useMemo(
-    () => computeTrueNumber(profile, spending, { mode: 'coast' }),
-    [profile, spending],
-  )
-  const retireTodayNumber = useMemo(
-    () => computeTrueNumber(profile, spending, { mode: 'retireToday' }),
-    [profile, spending],
-  )
-  const number = mode === 'retireToday' ? retireTodayNumber : coastNumber
+  const { input, defaultsUsed, displayCurrency, result } = useMemo(() => {
+    const mapped = wizardToV2Input(profile)
+    return { ...mapped, result: computeTrueNumberV2(mapped.input) }
+  }, [profile])
 
-  const pct = Math.round(number.percentToTarget * 100)
-  const marketName = spending.assumptions?.market?.name || 'National median'
-  const modeCopy = mode === 'retireToday'
-    ? `The wealth needed today to stop working now and sustain your ideal life to age ${number.assumptions.lifeExpectancy}.`
-    : `The wealth needed today to sustain your ideal life to age ${number.assumptions.lifeExpectancy}.`
+  const money = moneyFormatter(displayCurrency)
+  const r = result
+  const { necessities, shelter, discretion } = r.components
+  const pct = Math.round(r.percentToTarget * 100)
+  const cityName = r.isNationalAverage
+    ? (r.assumptions.city.country === 'CA' ? 'Canada' : 'the US')
+    : r.assumptions.city.name.split('-')[0]
+  const securityTier = FINANCIAL_SECURITY_TIERS.find((t) => t.multiple === r.components.securityMultiplier)
+  const isOwner = shelter.mode !== 'prefer_rent'
 
   return (
     <section className="card bg-hero-gradient text-white overflow-hidden relative">
       <div className="relative">
-        {/* Mode toggle */}
-        <div className="mb-4 inline-flex bg-white/15 backdrop-blur rounded-full p-1 text-xs font-semibold border border-white/20">
-          {[
-            { id: 'coast',        label: `Coast to ${number.assumptions.retirementAge}` },
-            { id: 'retireToday',  label: 'Retire today' },
-          ].map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setMode(opt.id)}
-              className={`px-3 py-1 rounded-full transition ${
-                mode === opt.id
-                  ? 'bg-white text-grape-700 shadow-sm'
-                  : 'text-white/80 hover:text-white'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
         <div className="flex items-baseline justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
+            <p className="text-[11px] font-semibold uppercase tracking-wider opacity-80 flex items-center gap-2">
               Your True Number
+              {r.isEstimated && (
+                <span className="rounded-full bg-white/20 border border-white/30 px-2 py-0.5 text-[10px] normal-case tracking-normal">
+                  Estimated
+                </span>
+              )}
             </p>
             <p className="mt-1 font-display text-4xl sm:text-5xl font-extrabold leading-none">
-              {fmtMoneyLarge(number.trueNumber)}
+              {money(r.trueNumber)}
             </p>
             <p className="mt-2 text-sm opacity-90 max-w-md">
-              {modeCopy}
+              The wealth you'd need today to fund your ideal life in {cityName} to
+              age {r.assumptions.lifeExpectancy} — without working another day.
             </p>
           </div>
 
-          {number.multiplier > 0 && (
+          {r.multiplier > 0 && (
             <div className="text-right shrink-0">
               <p className="text-[10px] uppercase tracking-wider opacity-70">Or think of it as</p>
-              <p className="font-display text-2xl font-extrabold leading-none mt-1">
-                {number.multiplier}×
-              </p>
-              <p className="text-[11px] opacity-80 mt-0.5">annual ideal spending</p>
+              <p className="font-display text-2xl font-extrabold leading-none mt-1">{r.multiplier}×</p>
+              <p className="text-[11px] opacity-80 mt-0.5">a year of your ideal life</p>
             </div>
           )}
         </div>
 
-        {/* Progress bar */}
+        {/* Progress */}
         <div className="mt-5">
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="opacity-90">
-              {fmtMoneyLarge(number.currentNetWorth)} <span className="opacity-70">current</span>
+              {money(r.currentNetWorth)} <span className="opacity-70">today</span>
             </span>
             <span className="font-display font-extrabold">{pct}% there</span>
           </div>
@@ -101,21 +101,22 @@ export default function TrueNumberCard({ profile }) {
             />
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2 text-sm opacity-90">
+            <span>Gap: <span className="font-display font-bold">{money(r.gap)}</span></span>
             <span>
-              Gap:{' '}
-              <span className="font-display font-bold">{fmtMoneyLarge(number.gap)}</span>
-            </span>
-            <span>
-              {number.yearsToTarget == null
+              {r.yearsToTarget == null
                 ? 'No clear path at current pace'
-                : number.yearsToTarget === 0
+                : r.yearsToTarget === 0
                   ? "You're there ✨"
-                  : `~${fmtYears(number.yearsToTarget)} to close`}
+                  : `~${fmtYears(r.yearsToTarget)} to close`}
             </span>
           </div>
+          {r.savings.incomeAssumed && r.yearsToTarget > 0 && (
+            <p className="mt-1 text-[11px] opacity-75">
+              Timeline assumes you save 20% of an income that fits this life. Add your real income in Play to sharpen it.
+            </p>
+          )}
         </div>
 
-        {/* Expandable assumptions */}
         <button
           type="button"
           onClick={() => setShowDetails((v) => !v)}
@@ -125,28 +126,66 @@ export default function TrueNumberCard({ profile }) {
         </button>
 
         {showDetails && (
-          <div className="mt-3 rounded-2xl bg-white/12 backdrop-blur p-3 text-sm space-y-1 border border-white/15">
-            <Row k="Ideal spending"     v={`${fmtMoneyLarge(number.assumptions.annualSpending)} / yr`} />
-            <Row k="Priced against"     v={marketName} />
-            <Row k="Discount rate"      v={`${(number.assumptions.discountRate * 100).toFixed(1)}% real`} />
-            <Row k="Retirement"         v={`Age ${number.assumptions.retirementAge} → ${number.assumptions.lifeExpectancy}`} />
-            <Row k="Retirement spending" v={`${fmtMoneyLarge(number.assumptions.retirementSpending)} / yr`} />
-            {number.annualGuaranteedIncome > 0 && (
-              <Row k="Pension income"    v={`${fmtMoneyLarge(number.annualGuaranteedIncome)} / yr from age ${number.assumptions.retirementAge}`} />
-            )}
-            <Row k="Retirement Number" v={`${fmtMoneyLarge(number.retirementNumber)} at age ${number.assumptions.retirementAge}`} />
+          <div className="mt-3 rounded-2xl bg-white/12 backdrop-blur p-3 text-sm border border-white/15 space-y-3">
+            <div className="space-y-1">
+              <Row k="Ideal city" v={`${cityName} · ${DENSITY_LABEL[densityKey(input.densityTierId)] || 'Suburbs'}`} />
+              <Row k="Housing" v={HOUSING_LABEL[shelter.mode]} />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">Each year</p>
+              <Row k="Living costs" v={money(necessities.annual)} hint="Food, transport, utilities" />
+              {isOwner ? (
+                <>
+                  {shelter.envelopeAnnual > 0 && (
+                    <Row k="Home payment" v={money(shelter.envelopeAnnual)} hint="Mortgage now, renovations once it's paid off" />
+                  )}
+                  <Row k="Property tax + upkeep" v={money(shelter.carryAnnual)} />
+                </>
+              ) : (
+                <Row k="Rent" v={money(shelter.envelopeAnnual)} />
+              )}
+              <Row
+                k="Lifestyle"
+                v={money(discretion.annual)}
+                hint={lifestyleHint(discretion)}
+              />
+              <Row
+                k={`× ${securityTier?.financialTier ?? 'security'} security`}
+                v={`${r.components.securityMultiplier}×`}
+                hint="Headroom for the security level you chose"
+              />
+              <Row k="Your ideal year" v={money(r.annualSpending)} strong />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">Over your lifetime</p>
+              <Row
+                k={`${r.assumptions.yearsProjected} years of that`}
+                v={money(r.spendingPV)}
+                hint={`Today's value at a ${(r.assumptions.discountRate * 100).toFixed(0)}% real return (${r.assumptions.investmentApproach})`}
+              />
+              {shelter.lumpSum > 0 && (
+                <Row k="Down payment" v={money(shelter.lumpSum)} hint="Paid up front, on top" />
+              )}
+              <Row k="True Number" v={money(r.trueNumber)} strong />
+            </div>
+
+            <p className="text-[11px] opacity-70">
+              Figures in {displayCurrency}. Costs are directional estimates for planning, not quotes.
+            </p>
           </div>
         )}
 
-        {/* Gaps — what we had to assume */}
-        {spending.gaps?.length > 0 && (
+        {defaultsUsed.length > 0 && (
           <div className="mt-3 rounded-2xl bg-white/12 border border-white/15 px-3 py-2 text-xs">
-            <p className="font-semibold opacity-90">Estimating with:</p>
+            <p className="font-semibold opacity-90">We assumed:</p>
             <ul className="mt-1 space-y-0.5 opacity-80">
-              {spending.gaps.map((g, i) => (
-                <li key={i}>· {g}</li>
-              ))}
+              {defaultsUsed.map((d) => <li key={d}>· {DEFAULT_LABEL[d] || d}</li>)}
             </ul>
+            <Link to="/wizard" className="mt-1.5 inline-block font-semibold underline underline-offset-2">
+              Update your answers
+            </Link>
           </div>
         )}
       </div>
@@ -154,30 +193,26 @@ export default function TrueNumberCard({ profile }) {
   )
 }
 
-function Row({ k, v }) {
+function densityKey(id) {
+  return { 1: 'urban', 2: 'suburbs', 3: 'rural' }[id]
+}
+
+function lifestyleHint(discretion) {
+  const cats = [...new Set(discretion.breakdown.map((b) => b.category))]
+  if (!cats.length) return 'No lifestyle categories selected'
+  const est = new Set(discretion.estimatedCategories)
+  const list = cats.map((c) => (est.has(c) ? `${c}*` : c)).join(', ')
+  return `${list} · ${discretion.tier} intensity${est.size ? ' · *estimated' : ''}`
+}
+
+function Row({ k, v, hint, strong }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="opacity-80">{k}</span>
-      <span className="font-semibold text-right">{v}</span>
+    <div className={`flex items-baseline justify-between gap-3 ${strong ? 'pt-1 border-t border-white/15' : ''}`}>
+      <span className="min-w-0">
+        <span className={strong ? 'font-semibold' : 'opacity-80'}>{k}</span>
+        {hint && <span className="block text-[11px] opacity-60 leading-snug">{hint}</span>}
+      </span>
+      <span className={`text-right shrink-0 ${strong ? 'font-display font-extrabold' : 'font-semibold'}`}>{v}</span>
     </div>
   )
-}
-
-// ── Formatting helpers — inlined so the component stays portable ────
-
-function fmtMoneyLarge(n) {
-  const v = Number(n) || 0
-  const abs = Math.abs(v)
-  if (abs >= 1_000_000)  return `${sign(v)}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2)}M`
-  if (abs >= 1_000)      return `${sign(v)}$${Math.round(abs / 1_000)}k`
-  return `${sign(v)}$${Math.round(abs).toLocaleString()}`
-}
-function sign(v) { return v < 0 ? '−' : '' }
-
-function fmtYears(y) {
-  const n = Number(y) || 0
-  if (n < 1)  return `${Math.round(n * 12)} mo`
-  if (n < 10) return `${n.toFixed(1)} yr`
-  if (n < 100) return `${Math.round(n)} yr`
-  return '99+ yr'
 }

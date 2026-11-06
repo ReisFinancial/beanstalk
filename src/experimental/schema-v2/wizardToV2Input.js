@@ -39,7 +39,13 @@ const LIQUID_ASSET_SUBTYPES = new Set([
   'savings', 'investments', 'crypto', 'retirement', 'pension', 'stockOptions',
 ])
 
-const firstGoal = (profile, category) =>
+// Assets that earn interest / appreciation — used for passive income in the
+// years-to-target estimate (mirrors v1).
+const INTEREST_SUBTYPES = new Set([
+  'savings', 'investments', 'retirement', 'crypto', 'stockOptions', 'collectibles',
+])
+
+const firstGoal =(profile, category) =>
   (profile?.goals || []).find((g) => g?.category === category) || null
 
 // ── Adapter ─────────────────────────────────────────────────────────
@@ -115,13 +121,25 @@ export function wizardToV2Input(profile) {
     defaultsUsed.push('birthDate')
   }
 
-  // Starting point — liquid net worth. Empty until the user adds figures
-  // (MVP priority #3); not flagged as a default because it's genuinely 0.
+  // Starting point — liquid net worth, income, passive income. Entered in
+  // the user's own currency, so Canadian figures convert to USD here.
+  // Empty until the user adds figures (MVP priority #3); not flagged as
+  // defaults because they're genuinely unknown, not assumed.
+  const fx = p.country === 'CA' ? CAD_TO_USD : 1
   const liquid = (profile?.assets || [])
     .filter((a) => LIQUID_ASSET_SUBTYPES.has(a?.subtype))
     .reduce((s, a) => s + (Number(a?.amount) || 0), 0)
   const debts = (profile?.liabilities || [])
     .reduce((s, l) => s + (Number(l?.amount) || 0), 0)
+  const rates = profile?.rates?.asset || {}
+  const passive = (profile?.assets || [])
+    .filter((a) => INTEREST_SUBTYPES.has(a?.subtype))
+    .reduce((s, a) => {
+      const custom = a.customRate !== null && a.customRate !== '' && Number.isFinite(Number(a.customRate))
+      const rate = custom ? Number(a.customRate) : Number(rates[a.subtype]) || 0
+      return s + (Number(a.amount) || 0) * (rate / 100)
+    }, 0)
+  const monthlyIncome = Number(profile?.finances?.monthlyIncome) || 0
 
   return {
     input: {
@@ -134,8 +152,12 @@ export function wizardToV2Input(profile) {
       lifestyleTier,
       lifestyleTypeIds,
       currentAge: Math.floor(currentAge),
-      currentNetWorth: liquid - debts,
+      currentNetWorth:     (liquid - debts) * fx,
+      annualIncome:        monthlyIncome * 12 * fx,
+      annualPassiveIncome: passive * fx,
     },
+    // Currency the user thinks in — the dashboard displays in this.
+    displayCurrency: p.country === 'CA' ? 'CAD' : 'USD',
     defaultsUsed,
   }
 }

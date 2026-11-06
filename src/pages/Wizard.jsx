@@ -6,6 +6,9 @@ import BeanstalkMark from '../components/BeanstalkMark.jsx'
 import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 import { LISTED_CITIES, NATIONAL_AVERAGE_CITY_IDS } from '../experimental/schema-v2/data.js'
 import { metrosNear } from '../experimental/schema-v2/regions.js'
+import { HOBBY_TEMPLATES, PRIORITY_TEMPLATES } from '../data/wizardTemplates.js'
+
+export { HOBBY_TEMPLATES, PRIORITY_TEMPLATES }
 
 const STEPS = [
   { id: 'welcome',    title: 'Welcome',     emoji: '👋' },
@@ -46,27 +49,8 @@ const INVESTMENT_APPROACHES = [
   { id: 'ambitious',    label: 'Ambitious' },
 ]
 
-// Five templated priorities the user ranks on Step 5. Stored on
-// profile.priorityRanking as an ordered array of ids. Exported so the
-// review + downstream views (Dashboard) can render the same labels.
-// Five templated hobby categories the user ranks on Step 3. Stored on
-// the lifestyle goal as `hobbyRanking` — an ordered array of ids. Later
-// the model can weight cost by position (top-ranked category scales up).
-export const HOBBY_TEMPLATES = [
-  { id: 'active',  emoji: '🏞️', title: 'Active',  detail: 'Sports, outdoors, and nature.' },
-  { id: 'social',  emoji: '🍸', title: 'Social',  detail: 'Nights out with friends.' },
-  { id: 'luxury',  emoji: '🛍️', title: 'Luxury',  detail: 'Retail and collectibles.' },
-  { id: 'digital', emoji: '🎮', title: 'Digital', detail: 'Games and screens.' },
-  { id: 'culture', emoji: '🎭', title: 'Culture', detail: 'Theatre and the arts.' },
-]
-
-export const PRIORITY_TEMPLATES = [
-  { id: 'security',   emoji: '🛡️', title: 'Freedom from a paycheck',          detail: 'Own my time. Answer to no one.' },
-  { id: 'loved_ones', emoji: '❤️',  title: 'Fully present for the ones I love', detail: 'No screens. No pings. Just me.' },
-  { id: 'lifestyle',  emoji: '✨',  title: 'A life without price tags',         detail: 'Say yes without doing the math.' },
-  { id: 'wealth',     emoji: '📈',  title: 'Wealth that outlasts me',           detail: 'Compound now. Coast later. Leave a legacy.' },
-  { id: 'home',       emoji: '🏡',  title: 'A home worth never leaving',        detail: 'Everything I love, under one roof.' },
-]
+// HOBBY_TEMPLATES (Step 3) and PRIORITY_TEMPLATES (Step 5) live in
+// src/data/wizardTemplates.js so the dashboard can share them.
 
 // Yes/No/Maybe → wealth track. Used by the welcome step and downstream
 // features that tailor guidance to what the user's actually pursuing.

@@ -9,6 +9,7 @@ import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../comp
 import BuyingPowerModal, { buyingPowerTier, BUYING_POWER_TIER_META } from '../components/BuyingPowerModal.jsx'
 import TrueNumberCard from '../components/TrueNumberCard.jsx'
 import CompareCitiesCard from '../components/CompareCitiesCard.jsx'
+import { PRIORITY_TEMPLATES } from '../data/wizardTemplates.js'
 import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 import ActionPlanner from '../components/ActionPlanner.jsx'
 import { formatLocation } from './Wizard.jsx'
@@ -383,6 +384,14 @@ export default function Dashboard() {
     .map((id) => profile.goals.find((g) => g.id === id))
     .filter(Boolean)
 
+  // Top priorities come from the wizard's Step 5 templated ranking — falls
+  // back to the templates' natural order when the user never reordered.
+  const rankedPriorities = (profile.priorityRanking?.length
+    ? profile.priorityRanking
+    : PRIORITY_TEMPLATES.map((t) => t.id))
+    .map((id) => PRIORITY_TEMPLATES.find((t) => t.id === id))
+    .filter(Boolean)
+
   const inc = Number(profile.finances.monthlyIncome) || 0
   const exp = Number(profile.finances.monthlyExpenses) || 0
   const cash = Number(profile.finances.liquidAssets) || 0
@@ -417,8 +426,8 @@ export default function Dashboard() {
     suggestions.push({ icon: '🧯', title: 'Pay down high-interest debt',
       text: 'Prioritize any balance above ~7% APR before investing more.' })
   }
-  if (topGoals.length >= 1) {
-    suggestions.push({ icon: '🎯', title: `Plan one action for "${topGoals[0].title}"`,
+  if (rankedPriorities.length >= 1) {
+    suggestions.push({ icon: rankedPriorities[0].emoji, title: `Plan one action for "${rankedPriorities[0].title}"`,
       text: 'Pick a single, concrete next step you can do this week.' })
   }
   if (profile.finances.riskTolerance === 'high' && inv === 0) {
@@ -568,16 +577,22 @@ export default function Dashboard() {
 
       <section>
         <div className="flex items-end justify-between mb-3">
-          <h2 className="font-display text-lg font-bold">Your top 3 focus</h2>
-          <Link to="/dashboard?view=goals" className="text-sm font-semibold text-grape-700">View goals →</Link>
+          <h2 className="font-display text-lg font-bold">Your top 3 priorities</h2>
+          <Link to="/wizard" className="text-sm font-semibold text-grape-700">Re-rank →</Link>
         </div>
-        {topGoals.length === 0 ? <EmptyGoals /> : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {topGoals.slice(0, 3).map((g, i) => (
-              <GoalCard key={g.id} goal={g} rank={i + 1} currentAge={ageFromPersonal(profile.personal)} />
-            ))}
-          </div>
-        )}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {rankedPriorities.slice(0, 3).map((t, i) => (
+            <div key={t.id} className="card !p-4 flex items-start gap-3">
+              <span className="grid place-items-center h-8 w-8 rounded-full text-xs font-bold bg-hero-gradient text-white shrink-0">
+                {i + 1}
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold"><span className="mr-1">{t.emoji}</span>{t.title}</p>
+                <p className="text-xs text-ink-500 mt-0.5">{t.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="card">

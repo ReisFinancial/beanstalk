@@ -71,6 +71,9 @@ export const MORTGAGE_ASSUMPTIONS = {
  */
 export const MAINTENANCE_RATE = 0.010
 
+/** The "20" in 50/30/20 — share of income assumed saved toward the target. */
+export const ASSUMED_SAVINGS_RATE = 0.20
+
 // ── Financial primitives ────────────────────────────────────────────
 
 /** Present value of a level annuity paying `annual` for `years` at `rate`. */
@@ -102,6 +105,24 @@ export function annualMortgagePayment(
   if (r === 0) return (P / n) * 12
   const monthly = (P * r) / (1 - Math.pow(1 + r, -n))
   return monthly * 12
+}
+
+/**
+ * Years until `netWorth` plus `annualSavings` (both compounding at real
+ * `rate`) reach `target`. 0 if already there; null if there's no path
+ * (nothing saved and nothing growing).
+ */
+export function yearsToReach(target, netWorth, annualSavings, rate) {
+  const T = Number(target) || 0
+  const W = Number(netWorth) || 0
+  const S = Number(annualSavings) || 0
+  const r = Number(rate) || 0
+  if (W >= T) return 0
+  if (r === 0) return S > 0 ? (T - W) / S : null
+  const num = T * r + S
+  const den = W * r + S
+  if (den <= 0 || num <= 0) return null
+  return Math.log(num / den) / Math.log(1 + r)
 }
 
 // ── Lookups ─────────────────────────────────────────────────────────
@@ -286,6 +307,8 @@ export function computeTrueNumberV2(input) {
     currentHomeValue = 0,
     currentAge, retirementAge = 65, lifeExpectancy = 90,
     currentNetWorth = 0,
+    annualIncome = 0,          // USD after-tax; 0 = not disclosed → assumed
+    annualPassiveIncome = 0,   // USD/yr from interest-bearing assets
   } = input
 
   // Reference-table lookups (throw early if the caller passed a bad id).
@@ -323,6 +346,19 @@ export function computeTrueNumberV2(input) {
     ? Math.min(1, Math.max(0, currentNetWorth / trueNumber))
     : 0
 
+  // Years to target. Uses the user's disclosed income when present;
+  // otherwise assumes they earn an income that fits this life (spending ÷
+  // 0.80) and save the "20" of 50/30/20. Unlike v1's linear estimate, both
+  // today's net worth and new savings compound at the same real rate used
+  // to discount the True Number:
+  //   NW·(1+r)^n + S·((1+r)^n − 1)/r = T   →   n = ln((T·r + S)/(NW·r + S)) / ln(1+r)
+  // Passive income is already a return on assets, so it isn't added to S
+  // (that would double-count the compounding).
+  const incomeAssumed   = !(Number(annualIncome) > 0)
+  const effectiveIncome = incomeAssumed ? scaledAnnual / 0.80 : Number(annualIncome)
+  const annualSavings   = effectiveIncome * ASSUMED_SAVINGS_RATE
+  const yearsToTarget   = yearsToReach(trueNumber, currentNetWorth, annualSavings, rate)
+
   return {
     // Headline
     trueNumber:       Math.round(trueNumber),
@@ -339,6 +375,17 @@ export function computeTrueNumberV2(input) {
     // What it costs to live this life for one year at today's prices
     annualSpending:   Math.round(scaledAnnual),
     monthlySpending:  Math.round(scaledAnnual / 12),
+
+    // Progress framing
+    multiplier:     scaledAnnual > 0 ? Math.round((trueNumber / scaledAnnual) * 10) / 10 : 0,
+    yearsToTarget:  yearsToTarget != null ? Math.round(yearsToTarget * 10) / 10 : null,
+    spendingPV:     Math.round(spendingPV),
+    savings: {
+      incomeAssumed,
+      effectiveIncome: Math.round(effectiveIncome),
+      annualSavings:   Math.round(annualSavings),
+      savingsRate:     ASSUMED_SAVINGS_RATE,
+    },
 
     // Component breakdown — perfect for a "why is this number what it is?"
     // popover or a Compare Cities table.
