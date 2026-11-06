@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { computeTrueNumberV2 } from '../experimental/schema-v2/trueNumberV2.js'
-import { wizardToV2Input } from '../experimental/schema-v2/wizardToV2Input.js'
 import { FINANCIAL_SECURITY_TIERS } from '../experimental/schema-v2/data.js'
-import { moneyFormatter, fmtYears } from '../utils/displayMoney.js'
+import { fmtYears } from '../utils/displayMoney.js'
+import { useTrueNumberV2 } from '../utils/useTrueNumberV2.js'
 
 /**
  * The Dashboard hero card — True Number v2.
@@ -39,18 +38,11 @@ const DEFAULT_LABEL = {
 export default function TrueNumberCard({ profile }) {
   const [showDetails, setShowDetails] = useState(false)
 
-  const { input, defaultsUsed, displayCurrency, result } = useMemo(() => {
-    const mapped = wizardToV2Input(profile)
-    return { ...mapped, result: computeTrueNumberV2(mapped.input) }
-  }, [profile])
+  const { input, defaultsUsed, displayCurrency, result, money, place: cityName } = useTrueNumberV2(profile)
 
-  const money = moneyFormatter(displayCurrency)
   const r = result
   const { necessities, shelter, discretion } = r.components
   const pct = Math.round(r.percentToTarget * 100)
-  const cityName = r.isNationalAverage
-    ? (r.assumptions.city.country === 'CA' ? 'Canada' : 'the US')
-    : r.assumptions.city.name.split('-')[0]
   const securityTier = FINANCIAL_SECURITY_TIERS.find((t) => t.multiple === r.components.securityMultiplier)
   const isOwner = shelter.mode !== 'prefer_rent'
 
@@ -117,13 +109,21 @@ export default function TrueNumberCard({ profile }) {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowDetails((v) => !v)}
-          className="mt-5 text-xs font-semibold underline underline-offset-2 opacity-90 hover:opacity-100"
-        >
-          {showDetails ? 'Hide the math' : 'Where does this number come from?'}
-        </button>
+        <div className="mt-5 flex items-center gap-4 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowDetails((v) => !v)}
+            className="text-xs font-semibold underline underline-offset-2 opacity-90 hover:opacity-100"
+          >
+            {showDetails ? 'Hide the math' : 'Where does this number come from?'}
+          </button>
+          <Link
+            to="/dashboard?view=number"
+            className="text-xs font-semibold rounded-full bg-white/20 hover:bg-white/30 border border-white/30 px-3 py-1"
+          >
+            Read more →
+          </Link>
+        </div>
 
         {showDetails && (
           <div className="mt-3 rounded-2xl bg-white/12 backdrop-blur p-3 text-sm border border-white/15 space-y-3">

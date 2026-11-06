@@ -9,6 +9,7 @@ import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../comp
 import BuyingPowerModal, { buyingPowerTier, BUYING_POWER_TIER_META } from '../components/BuyingPowerModal.jsx'
 import TrueNumberCard from '../components/TrueNumberCard.jsx'
 import CompareCitiesCard from '../components/CompareCitiesCard.jsx'
+import TrueNumberDetail from '../components/TrueNumberDetail.jsx'
 import { PRIORITY_TEMPLATES } from '../data/wizardTemplates.js'
 import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 import ActionPlanner from '../components/ActionPlanner.jsx'
@@ -458,6 +459,10 @@ export default function Dashboard() {
       removeGoal={removeGoal}
       updateGoal={updateGoal}
     />
+  }
+
+  if (view === 'number') {
+    return <TrueNumberDetail profile={profile} />
   }
 
   if (view === 'goals') {

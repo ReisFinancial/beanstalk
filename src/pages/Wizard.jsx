@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePlanner } from '../context/PlannerContext.jsx'
 import BeanstalkMark from '../components/BeanstalkMark.jsx'
@@ -934,7 +934,13 @@ function StepReview({ profile }) {
 export default function Wizard() {
   const { user } = useAuth()
   const { profile, updateSection, setGoals, setPriorities, setPriorityRanking, completeWizard, resetProfile } = usePlanner()
-  const [step, setStep] = useState(0)
+  // Deep links like /wizard?step=lifestyle open straight to that step —
+  // used by the True Number "read more" page's Edit links.
+  const [params] = useSearchParams()
+  const [step, setStep] = useState(() => {
+    const i = STEPS.findIndex((s) => s.id === params.get('step'))
+    return i >= 0 ? i : 0
+  })
   const navigate = useNavigate()
 
   const current = STEPS[step]
