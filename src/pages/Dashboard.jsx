@@ -5,11 +5,12 @@ import { usePlanner } from '../context/PlannerContext.jsx'
 import Hex from '../components/Hex.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import WealthMark, { wealthLevel, WEALTH_LEVELS } from '../components/WealthMark.jsx'
-import PrioritizeGoalsModal, { QUESTIONS as PRIORITIZE_QUESTIONS } from '../components/PrioritizeGoalsModal.jsx'
 import BuyingPowerModal, { buyingPowerTier, BUYING_POWER_TIER_META } from '../components/BuyingPowerModal.jsx'
 import TrueNumberCard from '../components/TrueNumberCard.jsx'
 import CompareCitiesCard from '../components/CompareCitiesCard.jsx'
 import TrueNumberDetail from '../components/TrueNumberDetail.jsx'
+import { useTrueNumberV2 } from '../utils/useTrueNumberV2.js'
+import { fmtYears } from '../utils/displayMoney.js'
 import { PRIORITY_TEMPLATES } from '../data/wizardTemplates.js'
 import { ageFromPersonal, MONTH_NAMES } from '../utils/age.js'
 import ActionPlanner from '../components/ActionPlanner.jsx'
@@ -108,19 +109,6 @@ const CATEGORIES = {
 // Format a goal's target age relative to the user's current age.
 // Returns "" when either piece is missing so the caller can render
 // nothing rather than a dangling label.
-function targetAgeLabel(goal, currentAge) {
-  const t = Number(goal?.targetAge)
-  if (!Number.isFinite(t) || t <= 0) return ''
-  const a = Number(currentAge)
-  if (Number.isFinite(a) && a > 0) {
-    const yrs = t - a
-    if (yrs <= 0) return `By age ${t} · now`
-    if (yrs < 1)  return `By age ${t} · ${Math.round(yrs * 12)} mo away`
-    const yrsRounded = Math.round(yrs)
-    return `By age ${t} · ${yrsRounded === 1 ? '1 yr' : `${yrsRounded} yrs`} away`
-  }
-  return `By age ${t}`
-}
 
 function fmtMoney(n) {
   const x = Number(n) || 0
@@ -143,25 +131,6 @@ function StatCard({ label, value, tone = 'default', hint }) {
   )
 }
 
-function GoalCard({ goal, rank, currentAge }) {
-  const c = CATEGORIES[goal.category] || CATEGORIES.lifestyle
-  const ageLabel = targetAgeLabel(goal, currentAge)
-  return (
-    <div className={`card bg-gradient-to-br ${c.color} relative overflow-hidden`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{c.emoji}</span>
-          <span className="chip bg-white text-ink-700">{c.label}</span>
-        </div>
-        {rank && (
-          <span className="chip bg-hero-gradient text-white">#{rank}</span>
-        )}
-      </div>
-      <h3 className="mt-3 font-display text-lg font-bold leading-snug">{goal.title}</h3>
-      <p className="mt-1 text-xs text-ink-500">{ageLabel || 'No target age set'}</p>
-    </div>
-  )
-}
 
 function NextStep({ icon, title, children }) {
   return (
@@ -352,17 +321,17 @@ export default function Dashboard() {
     updateSection,
     updateProfile,
     seedFromFinances,
-    setPriorities,
   } = usePlanner()
   const [params] = useSearchParams()
-  const view = params.get('view') || 'home'
+  // Retired views: 'money' merged into the snapshot; 'goals' removed (ideal-life
+  // goals and priorities now come from the wizard). Old links still land somewhere.
+  const rawView = params.get('view') || 'home'
+  const view = rawView === 'money' ? 'snapshot' : rawView === 'goals' ? 'home' : rawView
 
   // Modal state for adding items on the snapshot view
   const [addingType, setAddingType] = useState(null) // 'asset' | 'liability' | 'goal' | null
   // Modal state for editing an existing hex — { type, item } | null
   const [editing, setEditing] = useState(null)
-  // Goal prioritization modal (home view)
-  const [prioritizing, setPrioritizing] = useState(false)
 
   // Seed assets/liabilities from wizard finances the first time we
   // visit the snapshot view, so it isn't empty.
@@ -381,10 +350,6 @@ export default function Dashboard() {
 
   if (!profile) return null
 
-  const topGoals = (profile.priorities || [])
-    .map((id) => profile.goals.find((g) => g.id === id))
-    .filter(Boolean)
-
   // Top priorities come from the wizard's Step 5 templated ranking — falls
   // back to the templates' natural order when the user never reordered.
   const rankedPriorities = (profile.priorityRanking?.length
@@ -393,16 +358,25 @@ export default function Dashboard() {
     .map((id) => PRIORITY_TEMPLATES.find((t) => t.id === id))
     .filter(Boolean)
 
+  // Same sources as the Snapshot ("Your starting point") so the two views
+  // never disagree: hexes for net worth, cashflow inputs for the rates.
+  const assetList = profile.assets || []
+  const liabilityList = profile.liabilities || []
   const inc = Number(profile.finances.monthlyIncome) || 0
-  const exp = Number(profile.finances.monthlyExpenses) || 0
-  const cash = Number(profile.finances.liquidAssets) || 0
-  const inv = Number(profile.finances.investments) || 0
-  const realEstate = Number(profile.finances.realEstate) || 0
-  const debt = Number(profile.finances.debts) || 0
-  const monthly = inc - exp
-  const savingsRate = inc > 0 ? Math.round((monthly / inc) * 100) : null
+  const exp = Number(profile.finances.bareNecessities) || 0
+  const contributions =
+    assetList.reduce((s, a) => s + (Number(a.monthlyPayment) || 0), 0) +
+    liabilityList.reduce((s, l) => s + (Number(l.monthlyPayment) || 0), 0)
+  const cash = assetList
+    .filter((a) => (a.subtype || inferSubtype('asset', a.label)) === 'savings')
+    .reduce((s, a) => s + (Number(a.amount) || 0), 0)
+  const inv = assetList
+    .filter((a) => ['investments', 'retirement'].includes(a.subtype || inferSubtype('asset', a.label)))
+    .reduce((s, a) => s + (Number(a.amount) || 0), 0)
+  const debt = liabilityList.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  const savingsRate = inc > 0 ? Math.round((contributions / inc) * 100) : null
   const runwayMonths = exp > 0 ? +(cash / exp).toFixed(1) : null
-  const netWorth = cash + inv + realEstate - debt
+  const netWorth = assetList.reduce((s, a) => s + (Number(a.amount) || 0), 0) - debt
 
   const rateTone = savingsRate === null ? 'default'
     : savingsRate >= 15 ? 'good'
@@ -455,53 +429,13 @@ export default function Dashboard() {
       addLiability={addLiability}
       removeLiability={removeLiability}
       updateLiability={updateLiability}
-      addGoal={addGoal}
-      removeGoal={removeGoal}
-      updateGoal={updateGoal}
+      updateSection={updateSection}
+      updateRate={updateRate}
     />
   }
 
   if (view === 'number') {
     return <TrueNumberDetail profile={profile} />
-  }
-
-  if (view === 'goals') {
-    return <GoalsView
-      profile={profile}
-      setPriorities={setPriorities}
-    />
-  }
-
-  if (view === 'money') {
-    return (
-      <div className="space-y-6">
-        <Header view="money" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Monthly income"   value={fmtMoney(inc)} />
-          <StatCard label="Monthly expenses" value={fmtMoney(exp)} />
-          <StatCard label="Savings rate"
-            value={savingsRate === null ? '—' : `${savingsRate}%`}
-            hint={savingsRate === null ? 'Add income & expenses' : savingsRate >= 20 ? 'Excellent' : savingsRate >= 10 ? 'Solid' : 'Room to grow'}
-            tone={rateTone} />
-          <StatCard label="Runway"
-            value={runwayMonths === null ? '—' : `${runwayMonths} mo`}
-            hint={runwayMonths === null ? 'Add savings & expenses' : runwayMonths >= 6 ? 'Well covered' : runwayMonths >= 3 ? 'Getting there' : 'Build the cushion'}
-            tone={runwayTone} />
-        </div>
-        <ContributionsCard profile={profile} updateSection={updateSection} />
-
-        <RatesCard rates={profile.rates} updateRate={updateRate} />
-
-        <div className="card">
-          <h3 className="font-display font-bold">Risk tolerance</h3>
-          <p className="text-sm text-ink-500 mt-1 capitalize">
-            {profile.finances.riskTolerance
-              ? `${profile.finances.riskTolerance} — we'll tilt suggestions accordingly.`
-              : 'Not set yet. Update it in your profile.'}
-          </p>
-        </div>
-      </div>
-    )
   }
 
   if (view === 'profile') {
@@ -556,10 +490,12 @@ export default function Dashboard() {
       <CompareCitiesCard profile={profile} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Top goals"      value={topGoals.length} hint="From your wizard" />
-        <StatCard label="Savings rate"   value={savingsRate === null ? '—' : `${savingsRate}%`} tone={rateTone} />
-        <StatCard label="Runway"         value={runwayMonths === null ? '—' : `${runwayMonths} mo`} tone={runwayTone} />
-        <StatCard label="Net position"   value={fmtMoney(netWorth)} />
+        <StatCard label="Monthly income" value={inc > 0 ? fmtMoney(inc) : '—'} hint={inc > 0 ? 'After tax' : 'Add in Snapshot'} />
+        <StatCard label="Savings rate"   value={savingsRate === null ? '—' : `${savingsRate}%`} tone={rateTone}
+          hint={savingsRate === null ? 'Add income in Snapshot' : 'Monthly contributions ÷ income'} />
+        <StatCard label="Runway"         value={runwayMonths === null ? '—' : `${runwayMonths} mo`} tone={runwayTone}
+          hint={runwayMonths === null ? 'Add savings + necessities' : 'Savings ÷ bare necessities'} />
+        <StatCard label="Net worth"      value={fmtMoney(netWorth)} hint="Everything you own − owe" />
       </div>
 
       <ActionPlanCard
@@ -572,12 +508,6 @@ export default function Dashboard() {
         onRemove={(id) => updateProfile((cur) => ({
           actionPlan: (cur.actionPlan || []).filter((a) => a.id !== id),
         }))}
-      />
-
-      {/* Decision-making CTA — opens the prioritization modal */}
-      <PrioritizeCTA
-        goalCount={(profile.goals || []).length}
-        onClick={() => setPrioritizing(true)}
       />
 
       <section>
@@ -610,54 +540,15 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {prioritizing && (
-        <PrioritizeGoalsModal
-          goals={profile.goals || []}
-          onClose={() => setPrioritizing(false)}
-          onSave={(orderedIds) => {
-            setPriorities(orderedIds)
-            setPrioritizing(false)
-          }}
-        />
-      )}
     </div>
   )
 }
 
-// Banner CTA on the dashboard home that opens the prioritization modal.
-function PrioritizeCTA({ goalCount, onClick }) {
-  const disabled = goalCount === 0
-  return (
-    <div className="card bg-gradient-to-br from-olive-50 to-white border-olive-200">
-      <div className="flex items-start gap-4 flex-wrap">
-        <div className="h-12 w-12 shrink-0 rounded-2xl bg-olive-100 grid place-items-center text-2xl">
-          🧭
-        </div>
-        <div className="flex-1 min-w-[14rem]">
-          <h3 className="font-display font-extrabold text-lg">Decide your top 3 focus</h3>
-          <p className="text-sm text-ink-500 mt-0.5">
-            Rate your goals across five dimensions — peace of mind, daily life impact,
-            flexibility, identity fit, and financial safety — and let Beanstalk score them.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={disabled}
-          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-          title={disabled ? 'Add goals first to prioritize them' : undefined}
-        >
-          Prioritize goals
-        </button>
-      </div>
-    </div>
-  )
-}
 
 function Header({ view, greeting, name }) {
   const titles = {
     home:     { h: greeting ? `${greeting}, ${name || 'friend'}` : 'Dashboard', s: "Here's the shape of your plan today." },
-    snapshot: { h: 'Snapshot',       s: 'Your assets and liabilities — one hex at a time.' },
+    snapshot: { h: 'Your starting point', s: 'Where you are today — what your True Number measures against.' },
     goals:    { h: 'Goals',          s: 'What you\'re working toward, hex by hex.' },
     money:    { h: 'Your money',     s: 'A live view of the numbers you shared.' },
     profile:  { h: 'Your profile',   s: 'The context we use to personalize things.' },
@@ -939,22 +830,55 @@ function RatesCard({ rates, updateRate }) {
   )
 }
 
-function EmptyGoals() {
+
+// ----- Snapshot (hex grid) ----------------------------------------------
+
+function StepHeading({ n, title, hint }) {
   return (
-    <div className="card text-center">
-      <p className="text-ink-500">No goals yet.</p>
-      <Link to="/wizard" className="btn-primary mt-3 inline-flex">Add some in the wizard</Link>
+    <div className="flex items-start gap-3 pt-2">
+      <span className="grid place-items-center h-7 w-7 rounded-full bg-hero-gradient text-white text-xs font-bold shrink-0">{n}</span>
+      <div>
+        <h2 className="font-display text-lg font-bold leading-tight">{title}</h2>
+        <p className="text-sm text-ink-500">{hint}</p>
+      </div>
     </div>
   )
 }
 
-// ----- Snapshot (hex grid) ----------------------------------------------
+// Ties the starting point back to the True Number so every figure entered
+// below visibly moves the progress bar and timeline.
+function StartingPointProgress({ profile }) {
+  const { result: r, money } = useTrueNumberV2(profile)
+  const pct = Math.round(r.percentToTarget * 100)
+  return (
+    <div className="card bg-card-gradient">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <p className="text-sm">
+          <span className="font-display text-xl font-extrabold">{money(r.currentNetWorth)}</span>
+          <span className="text-ink-500"> of your {money(r.trueNumber)} True Number</span>
+        </p>
+        <p className="text-sm font-semibold text-grape-700">
+          {pct}% there
+          {r.yearsToTarget > 0 && <span className="text-ink-500 font-normal"> · ~{fmtYears(r.yearsToTarget)} to go</span>}
+        </p>
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-white overflow-hidden">
+        <div className="h-full bg-hero-gradient" style={{ width: `${Math.max(1, pct)}%` }} />
+      </div>
+      <p className="mt-2 text-[11px] text-ink-500">
+        Counts savings, investments, and retirement accounts, minus debts. Your home and car aren't counted — you live in and drive them.
+        {r.savings.source === 'contributions' && ` Timeline uses your ${money(r.savings.annualSavings / 12)}/mo of contributions, growing at your investment return.`}
+        {r.savings.source === 'income' && ' Timeline assumes you save 20% of your income — add monthly contributions to your hexes to use your real number.'}
+        {r.savings.source === 'assumed' && ' Add your income and monthly contributions below to replace the assumed timeline.'}
+      </p>
+    </div>
+  )
+}
 
 const SNAPSHOT_FILTERS = [
   { id: 'all',         label: 'All',         tone: 'ink' },
   { id: 'assets',      label: 'Assets',      tone: 'brand' },
   { id: 'liabilities', label: 'Liabilities', tone: 'red' },
-  { id: 'goals',       label: 'Goals',       tone: 'grape' },
 ]
 
 const GOAL_CAT_EMOJI = {
@@ -966,15 +890,21 @@ const GOAL_CAT_EMOJI = {
   money: '💰', career: '🧑‍💻', health: '💪',
   learning: '📚', relationships: '❤️', lifestyle: '🌿',
 }
+// Merged Snapshot + Money ("Your starting point"). Three steps, top-down:
+//   1. Net worth  — asset / liability hexes
+//   2. Monthly cashflow — take-home income + where it goes
+//   3. Growth & rates (collapsed) — projections, wealth level, return rates
+// Goals no longer live here; ideal-life goals come from the wizard.
 function SnapshotView({
   profile,
   addingType, setAddingType,
   editing, setEditing,
   addAsset, removeAsset, updateAsset,
   addLiability, removeLiability, updateLiability,
-  addGoal, removeGoal, updateGoal,
+  updateSection, updateRate,
 }) {
   const [filter, setFilter] = useState('all')
+  const [showGrowth, setShowGrowth] = useState(false)
 
   // Projection controls
   const [unit, setUnit]       = useState('years') // 'months' | 'years'
@@ -983,7 +913,6 @@ function SnapshotView({
 
   const assets = profile.assets || []
   const liabilities = profile.liabilities || []
-  const goals = profile.goals || []
   const rates = profile.rates
 
   // Projected values per hex — recompute only when inputs change
@@ -1023,13 +952,11 @@ function SnapshotView({
 
   const showAssets      = filter === 'all' || filter === 'assets'
   const showLiabilities = filter === 'all' || filter === 'liabilities'
-  const showGoals       = filter === 'all' || filter === 'goals'
 
   // Add: new signature is (type, payload)
   const handleAddSubmit = (type, payload) => {
     if (type === 'asset') addAsset(payload)
     else if (type === 'liability') addLiability(payload)
-    else if (type === 'goal') addGoal(payload)
     setAddingType(null)
   }
 
@@ -1041,14 +968,11 @@ function SnapshotView({
     if (newType === oldType) {
       if (newType === 'asset')     updateAsset(item.id, payload)
       else if (newType === 'liability') updateLiability(item.id, payload)
-      else if (newType === 'goal') updateGoal(item.id, payload)
     } else {
       if (oldType === 'asset')     removeAsset(item.id)
       else if (oldType === 'liability') removeLiability(item.id)
-      else if (oldType === 'goal') removeGoal(item.id)
       if (newType === 'asset')     addAsset(payload)
       else if (newType === 'liability') addLiability(payload)
-      else if (newType === 'goal') addGoal(payload)
     }
     setEditing(null)
   }
@@ -1058,15 +982,18 @@ function SnapshotView({
     const { type, item } = editing
     if (type === 'asset')     removeAsset(item.id)
     else if (type === 'liability') removeLiability(item.id)
-    else if (type === 'goal') removeGoal(item.id)
     setEditing(null)
   }
 
-  const isEmpty = assets.length + liabilities.length + goals.length === 0
+  const isEmpty = assets.length + liabilities.length === 0
 
   return (
     <div className="space-y-6">
       <Header view="snapshot" />
+
+      <StartingPointProgress profile={profile} />
+
+      <StepHeading n={1} title="What you own and owe" hint="Add each account, property, or debt. Your net worth is assets minus liabilities." />
 
       {/* KPI strip */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -1117,10 +1044,6 @@ function SnapshotView({
             onClick={() => setAddingType('liability')}
             className="btn-secondary !py-2 !px-4 text-sm border-red-200 text-red-700 hover:bg-red-50"
           >+ Liability</button>
-          <button
-            onClick={() => setAddingType('goal')}
-            className="btn-secondary !py-2 !px-4 text-sm border-grape-200 text-grape-700 hover:bg-grape-50"
-          >+ Goal</button>
         </div>
       </div>
 
@@ -1152,40 +1075,68 @@ function SnapshotView({
           />
         ))}
 
-        {showGoals && goals.map((g) => (
-          <Hex
-            key={g.id}
-            tone="goal"
-            as="button"
-            icon={GOAL_CAT_EMOJI[g.category] || '🎯'}
-            title={g.title}
-            subtitle={g.targetAge ? `By age ${g.targetAge}` : ''}
-            hideTag
-            onClick={() => setEditing({ type: 'goal', item: g })}
-            onRemove={() => removeGoal(g.id)}
-          />
-        ))}
       </div>
 
       {isEmpty && (
         <p className="text-center text-sm text-ink-500">
-          Start by adding a hex for an asset, debt, or goal.
+          Start with your biggest account — a chequing or savings balance is a great first hex.
         </p>
       )}
 
-      {/* Projection slider + wealth level — paired in a two-column row */}
-      {!isEmpty && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <ProjectionSlider
-            unit={unit} setUnit={setUnit}
-            periods={periods} setPeriods={setPeriods}
-            projectedNet={netWorth}
-            currentAge={ageFromPersonal(profile.personal)}
-            pensionAssets={assets.filter(
-              (a) => (a.subtype || inferSubtype('asset', a.label)) === 'pension',
-            )}
+      <StepHeading n={2} title="Your monthly cashflow" hint="What comes in after tax, and where it goes. This sets how fast you close the gap." />
+
+      <div className="card">
+        <label className="label" htmlFor="monthly-income">Monthly take-home income</label>
+        <div className="relative max-w-xs">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300">$</span>
+          <input
+            id="monthly-income"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            className="input pl-8 pr-12"
+            placeholder="e.g. 6500"
+            value={profile.finances?.monthlyIncome ?? ''}
+            onChange={(e) => updateSection('finances', { monthlyIncome: e.target.value })}
           />
-          <WealthLevelCard netWorth={netWorth} />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">/mo</span>
+        </div>
+        <p className="mt-1 text-[11px] text-ink-400">After tax, all sources combined. You can split it by source in Play.</p>
+      </div>
+
+      <ContributionsCard profile={profile} updateSection={updateSection} />
+
+      {/* Step 3 — optional depth, collapsed by default to keep the page calm */}
+      <button
+        type="button"
+        onClick={() => setShowGrowth((v) => !v)}
+        className="w-full card !py-3 flex items-center justify-between text-left hover:border-grape-300"
+        aria-expanded={showGrowth}
+      >
+        <span>
+          <span className="font-display font-bold">Growth &amp; rates</span>
+          <span className="block text-xs text-ink-500">Project your net worth forward and fine-tune return and interest rates. Optional.</span>
+        </span>
+        <span className="text-ink-400 text-sm">{showGrowth ? 'Hide' : 'Show'}</span>
+      </button>
+
+      {showGrowth && (
+        <div className="space-y-4">
+          {!isEmpty && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ProjectionSlider
+                unit={unit} setUnit={setUnit}
+                periods={periods} setPeriods={setPeriods}
+                projectedNet={netWorth}
+                currentAge={ageFromPersonal(profile.personal)}
+                pensionAssets={assets.filter(
+                  (a) => (a.subtype || inferSubtype('asset', a.label)) === 'pension',
+                )}
+              />
+              <WealthLevelCard netWorth={netWorth} />
+            </div>
+          )}
+          <RatesCard rates={profile.rates} updateRate={updateRate} />
         </div>
       )}
 
@@ -1360,215 +1311,4 @@ function WealthLevelCard({ netWorth }) {
 
 // ----- Goals (hex grid) ------------------------------------------------
 
-function GoalsView({ profile, setPriorities }) {
-  const goals       = profile.goals       || []
-  const priorityIds = profile.priorities  || []
-  const isEmpty = goals.length === 0
-  const [prioritizing, setPrioritizing] = useState(false)
 
-  // Sort: prioritized goals first (in their stored order), the rest after.
-  const orderedGoals = useMemo(() => {
-    const byId = new Map(goals.map((g) => [g.id, g]))
-    const top = priorityIds.map((id) => byId.get(id)).filter(Boolean)
-    const rest = goals.filter((g) => !priorityIds.includes(g.id))
-    return [...top, ...rest]
-  }, [goals, priorityIds])
-
-  // Readiness checks — each row in the prep checklist lights up green
-  // when satisfied, so the user knows what to fix before they start.
-  const currentAge      = ageFromPersonal(profile.personal)
-  const targetAgesSet   = goals.filter(
-    (g) => Number.isFinite(Number(g.targetAge)) && Number(g.targetAge) > 0,
-  ).length
-  const haveEnoughGoals = goals.length >= 2
-  const haveAge         = !!currentAge
-  const allHaveTargets  = goals.length > 0 && targetAgesSet === goals.length
-  const readyToStart    = haveEnoughGoals
-
-  return (
-    <div className="space-y-6">
-      <Header view="goals" />
-
-      {/* Intro — explains the page's purpose. */}
-      <section className="card bg-card-gradient border-grape-200">
-        <h2 className="font-display text-xl font-extrabold text-grape-800">
-          Prepare to prioritize your goals
-        </h2>
-        <p className="text-sm text-ink-500 mt-1.5 max-w-2xl">
-          You'll score each of your goals on five dimensions, and we'll rank
-          them based on the results. Use this page to get ready — confirm
-          your goals are captured, target ages are set, and you've shared
-          your age. Then start the ranking when you're ready.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            to="/dashboard?view=snapshot"
-            className="btn-secondary !py-2 !px-4 text-sm border-grape-200 text-grape-700 hover:bg-grape-50"
-          >
-            Manage goals in Snapshot →
-          </Link>
-        </div>
-      </section>
-
-      {/* Readiness checklist */}
-      <section className="card">
-        <h3 className="font-display font-bold text-lg">What you'll need</h3>
-        <p className="text-xs text-ink-500 mt-0.5">
-          A short readiness check so the ranking has good data to work with.
-        </p>
-        <ul className="mt-4 space-y-2 text-sm">
-          <ReadinessRow
-            done={haveEnoughGoals}
-            label="At least 2 goals captured"
-            hint={
-              goals.length === 0 ? 'No goals yet — add some in Snapshot.'
-              : goals.length === 1 ? 'Just one so far — add at least one more to compare against.'
-              : `You have ${goals.length} goals captured.`
-            }
-          />
-          <ReadinessRow
-            done={haveAge}
-            label="Your current age set"
-            hint={
-              haveAge ? `Currently ${currentAge} yrs.`
-              : 'Set your age in the wizard or Profile so milestone-age maths line up.'
-            }
-          />
-          <ReadinessRow
-            done={allHaveTargets}
-            label="Target age on every goal"
-            hint={
-              goals.length === 0 ? 'Add goals first.'
-              : allHaveTargets ? 'All goals have a target age.'
-              : `${targetAgesSet} of ${goals.length} set — open the Snapshot to fill the rest.`
-            }
-          />
-        </ul>
-      </section>
-
-      {/* Scoring dimensions */}
-      <section className="card">
-        <h3 className="font-display font-bold text-lg">How the ranking works</h3>
-        <p className="text-xs text-ink-500 mt-0.5">
-          You'll rate each goal 0–10 on these five dimensions. Financial
-          safety carries the heaviest weight.
-        </p>
-        <ol className="mt-4 grid gap-3 sm:grid-cols-2">
-          {PRIORITIZE_QUESTIONS.map((q, i) => (
-            <li
-              key={q.id}
-              className="rounded-2xl border border-slate-200 bg-white p-3"
-            >
-              <p className="flex items-baseline gap-2">
-                <span className="font-display text-sm font-extrabold text-grape-700 tabular-nums">
-                  {i + 1}.
-                </span>
-                <span className="text-sm font-bold text-ink-700">{q.title}</span>
-              </p>
-              <p className="text-xs text-ink-500 mt-1 leading-snug">
-                {q.question}
-              </p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* The goal list — what's actually going into the ranking */}
-      {!isEmpty && (
-        <section className="card">
-          <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <div>
-              <h3 className="font-display font-bold text-lg">Goals to be ranked</h3>
-              <p className="text-xs text-ink-500 mt-0.5">
-                {priorityIds.length > 0
-                  ? `${priorityIds.length} already ranked from a prior pass.`
-                  : 'No ranking yet — these will all start fresh.'}
-              </p>
-            </div>
-          </div>
-          <ul className="mt-4 space-y-2">
-            {orderedGoals.map((g) => {
-              const rank = priorityIds.indexOf(g.id)
-              return (
-                <li
-                  key={g.id}
-                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"
-                >
-                  <span className="text-xl shrink-0">
-                    {GOAL_CAT_EMOJI[g.category] || '🎯'}
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold truncate">{g.title}</span>
-                    {g.targetAge && (
-                      <span className="block text-[11px] text-ink-500">
-                        {targetAgeLabel(g, currentAge)}
-                      </span>
-                    )}
-                  </span>
-                  {rank >= 0 && (
-                    <span className="chip border border-grape-200 bg-grape-50 text-grape-700 shrink-0">
-                      #{rank + 1}
-                    </span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* CTA */}
-      <div className="flex items-center justify-end gap-3 flex-wrap">
-        {!readyToStart && (
-          <p className="text-xs text-ink-500 flex-1">
-            Add more goals on the Snapshot to enable ranking.
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={() => setPrioritizing(true)}
-          disabled={!readyToStart}
-          className="btn-primary !py-2 !px-5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {priorityIds.length > 0 ? 'Re-rank goals' : 'Start prioritizing'}
-        </button>
-      </div>
-
-      {!isEmpty && <ActionPlanner profile={profile} />}
-
-      {prioritizing && (
-        <PrioritizeGoalsModal
-          goals={goals}
-          onClose={() => setPrioritizing(false)}
-          onSave={(orderedIds) => {
-            setPriorities(orderedIds)
-            setPrioritizing(false)
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function ReadinessRow({ done, label, hint }) {
-  return (
-    <li className="flex items-start gap-3 rounded-2xl border p-3 transition border-slate-200 bg-white">
-      <span
-        className={`mt-0.5 h-5 w-5 rounded-full grid place-items-center text-[11px] font-bold shrink-0 ${
-          done
-            ? 'bg-brand-500 text-white'
-            : 'bg-slate-100 text-slate-400 border border-slate-200'
-        }`}
-        aria-hidden
-      >
-        {done ? '✓' : '·'}
-      </span>
-      <span className="flex-1 min-w-0">
-        <span className={`block text-sm font-semibold ${done ? 'text-ink-700' : 'text-ink-700'}`}>
-          {label}
-        </span>
-        <span className="block text-xs text-ink-500 mt-0.5">{hint}</span>
-      </span>
-    </li>
-  )
-}

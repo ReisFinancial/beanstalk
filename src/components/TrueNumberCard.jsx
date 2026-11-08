@@ -102,9 +102,9 @@ export default function TrueNumberCard({ profile }) {
                   : `~${fmtYears(r.yearsToTarget)} to close`}
             </span>
           </div>
-          {r.savings.incomeAssumed && r.yearsToTarget > 0 && (
+          {r.savings.source === 'assumed' && r.yearsToTarget > 0 && (
             <p className="mt-1 text-[11px] opacity-75">
-              Timeline assumes you save 20% of an income that fits this life. Add your real income in Play to sharpen it.
+              Timeline assumes you save 20% of an income that fits this life. Add your real income in Snapshot to sharpen it.
             </p>
           )}
         </div>
@@ -117,6 +117,14 @@ export default function TrueNumberCard({ profile }) {
           >
             {showDetails ? 'Hide the math' : 'Where does this number come from?'}
           </button>
+          {(r.currentNetWorth === 0 || r.savings.incomeAssumed) && (
+            <Link
+              to="/dashboard?view=snapshot"
+              className="text-xs font-semibold rounded-full bg-white text-grape-700 hover:bg-white/90 px-3 py-1"
+            >
+              Add your starting point →
+            </Link>
+          )}
           <Link
             to="/dashboard?view=number"
             className="text-xs font-semibold rounded-full bg-white/20 hover:bg-white/30 border border-white/30 px-3 py-1"
@@ -183,8 +191,8 @@ export default function TrueNumberCard({ profile }) {
             <ul className="mt-1 space-y-0.5 opacity-80">
               {defaultsUsed.map((d) => <li key={d}>· {DEFAULT_LABEL[d] || d}</li>)}
             </ul>
-            <Link to="/wizard" className="mt-1.5 inline-block font-semibold underline underline-offset-2">
-              Update your answers
+            <Link to="/dashboard?view=number" className="mt-1.5 inline-block font-semibold underline underline-offset-2">
+              Review your answers
             </Link>
           </div>
         )}

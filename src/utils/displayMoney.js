@@ -12,7 +12,8 @@ export function moneyFormatter(currency = 'USD') {
     const abs = Math.abs(v)
     const sign = v < 0 ? '−' : ''
     if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2)}M`
-    if (abs >= 1_000)     return `${sign}$${Math.round(abs / 1_000)}k`
+    if (abs >= 10_000)    return `${sign}$${Math.round(abs / 1_000)}k`
+    if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1).replace(/\.0$/, '')}k`
     return `${sign}$${Math.round(abs).toLocaleString()}`
   }
 }

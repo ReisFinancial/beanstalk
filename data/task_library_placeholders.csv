@@ -1,0 +1,20 @@
+placeholder,filledFrom,meaning,example
+{deltaTN},Lever engine,How much the lever lowers the True Number,$529k
+{yearsSaved},Lever engine,How much sooner the user reaches it,3.3 yr
+{extraMonthly},Lever engine,Extra monthly savings tested by save_more,$500
+{density},Lever engine,Neighbourhood type the lever switches to,rural
+{city},Profile,User's ideal city,Toronto
+{cityTarget},Lever engine,Cheaper city from cheaper_city,Calgary
+{tier},Lever engine,Lifestyle intensity the lever moves to,quiet
+{category},Lever engine,Lifestyle category dropped by lifestyle_drop,luxury
+{tierFrom} / {tierTo},Lever engine,Security level now / proposed,comfortable / basic
+{approachTo},Lever engine,Investment approach proposed,ambitious
+{downPayment},True Number,Down payment if they bought,$144k
+{monthlySavings},Snapshot,Current monthly contributions,$1.6k
+{emergencyMonths} / {emergencyTarget},Snapshot,Cushion length and dollar target (months × bare necessities),3 / $9.6k
+{runwayMonths},Snapshot,Savings ÷ bare necessities,12.5
+{debtName} / {debtRate},Snapshot,Highest-interest debt and its rate,Credit card / 19.99
+{incomeIdea} / {incomeTaskText},Income catalog,Chosen income idea and its filled taskTemplate,tutoring / List yourself as a tutor…
+{raiseMonthly},Income catalog,Median monthly raise from raise_negotiation,$400
+{month},Plan,Calendar month the task lands in,March
+{lastCheckIn},Plan,Month of the previous check-in,December

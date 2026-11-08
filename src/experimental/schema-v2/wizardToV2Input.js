@@ -140,6 +140,11 @@ export function wizardToV2Input(profile) {
       return s + (Number(a.amount) || 0) * (rate / 100)
     }, 0)
   const monthlyIncome = Number(profile?.finances?.monthlyIncome) || 0
+  // Monthly contributions / debt payments on the Snapshot hexes — the
+  // user's real savings rate once they've entered it.
+  const monthlyContributions =
+    (profile?.assets || []).reduce((s, x) => s + (Number(x?.monthlyPayment) || 0), 0) +
+    (profile?.liabilities || []).reduce((s, x) => s + (Number(x?.monthlyPayment) || 0), 0)
 
   return {
     input: {
@@ -155,6 +160,7 @@ export function wizardToV2Input(profile) {
       currentNetWorth:     (liquid - debts) * fx,
       annualIncome:        monthlyIncome * 12 * fx,
       annualPassiveIncome: passive * fx,
+      annualContributions: monthlyContributions * 12 * fx,
     },
     // Currency the user thinks in — the dashboard displays in this.
     displayCurrency: p.country === 'CA' ? 'CAD' : 'USD',

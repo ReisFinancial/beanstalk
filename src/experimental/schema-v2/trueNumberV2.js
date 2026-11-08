@@ -308,7 +308,8 @@ export function computeTrueNumberV2(input) {
     currentAge, retirementAge = 65, lifeExpectancy = 90,
     currentNetWorth = 0,
     annualIncome = 0,          // USD after-tax; 0 = not disclosed → assumed
-    annualPassiveIncome = 0,   // USD/yr from interest-bearing assets
+    annualPassiveIncome = 0,   // USD/yr from interest-bearing assets (informational)
+    annualContributions = 0,   // USD/yr the user actually puts toward assets/debt; wins when > 0
   } = input
 
   // Reference-table lookups (throw early if the caller passed a bad id).
@@ -354,9 +355,15 @@ export function computeTrueNumberV2(input) {
   //   NW·(1+r)^n + S·((1+r)^n − 1)/r = T   →   n = ln((T·r + S)/(NW·r + S)) / ln(1+r)
   // Passive income is already a return on assets, so it isn't added to S
   // (that would double-count the compounding).
+  // Savings source, best first: what they actually contribute each month →
+  // 20% of their disclosed income → 20% of an income that fits this life.
   const incomeAssumed   = !(Number(annualIncome) > 0)
   const effectiveIncome = incomeAssumed ? scaledAnnual / 0.80 : Number(annualIncome)
-  const annualSavings   = effectiveIncome * ASSUMED_SAVINGS_RATE
+  const hasContributions = Number(annualContributions) > 0
+  const annualSavings   = hasContributions
+    ? Number(annualContributions)
+    : effectiveIncome * ASSUMED_SAVINGS_RATE
+  const savingsSource   = hasContributions ? 'contributions' : incomeAssumed ? 'assumed' : 'income'
   const yearsToTarget   = yearsToReach(trueNumber, currentNetWorth, annualSavings, rate)
 
   return {
@@ -382,6 +389,7 @@ export function computeTrueNumberV2(input) {
     spendingPV:     Math.round(spendingPV),
     savings: {
       incomeAssumed,
+      source:          savingsSource,   // 'contributions' | 'income' | 'assumed'
       effectiveIncome: Math.round(effectiveIncome),
       annualSavings:   Math.round(annualSavings),
       savingsRate:     ASSUMED_SAVINGS_RATE,

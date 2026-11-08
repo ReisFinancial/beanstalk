@@ -993,14 +993,11 @@ function GameboardInner({ profile }) {
           <h3 className="mt-3 font-display text-lg font-bold">Your arena is empty</h3>
           <p className="mt-1 text-sm text-ink-500 max-w-md mx-auto">
             The board needs at least one asset and one liability or goal to play.
-            Add them on your Snapshot and Goals pages, then come back.
+            Add what you own and owe on your Snapshot, then come back.
           </p>
           <div className="mt-5 flex items-center justify-center gap-2">
             <Link to="/dashboard?view=snapshot" className="btn-secondary !py-2 !px-4 text-sm">
               Go to Snapshot
-            </Link>
-            <Link to="/dashboard?view=goals" className="btn-secondary !py-2 !px-4 text-sm">
-              Go to Goals
             </Link>
           </div>
         </div>

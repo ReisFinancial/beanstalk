@@ -1,7 +1,10 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LIFESTYLE_TYPES, FINANCIAL_SECURITY_TIERS, CAD_TO_USD } from '../experimental/schema-v2/data.js'
 import { fmtYears } from '../utils/displayMoney.js'
 import { useTrueNumberV2 } from '../utils/useTrueNumberV2.js'
+import { computeLevers } from '../experimental/schema-v2/leverEngine.js'
+import TrueNumberEditModal from './TrueNumberEditModal.jsx'
 
 /**
  * "Read more" page for the True Number (Dashboard ?view=number).
@@ -10,7 +13,7 @@ import { useTrueNumberV2 } from '../utils/useTrueNumberV2.js'
  *   1. One-sentence summary
  *   2. What one ideal year costs — security headroom shown in dollars
  *   3. Why the number is so big (in plain words)
- *   4. What you told us vs. what we assumed — each with its own edit link
+ *   4. What you told us vs. what we assumed — Edit opens a pop-up in place
  *   5. What would move this number (placeholder until the lever engine)
  *   6. How confident we are
  */
@@ -26,6 +29,7 @@ const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
 export default function TrueNumberDetail({ profile }) {
   const { input, defaultsUsed, displayCurrency, result: r, money, place } = useTrueNumberV2(profile)
+  const [editing, setEditing] = useState(null) // edit-modal section, or null
   const { necessities, shelter, discretion, securityMultiplier, preTierAnnual } = r.components
   const assumed = new Set(defaultsUsed)
   const isOwner = shelter.mode !== 'prefer_rent'
@@ -64,26 +68,35 @@ export default function TrueNumberDetail({ profile }) {
   const hasAssets = (profile.assets || []).length > 0 || (profile.liabilities || []).length > 0
 
   const inputs = [
-    { key: 'idealCity', label: 'Where you want to live', step: 'personal',
+    { key: 'idealCity', label: 'Where you want to live', edit: 'city',
       value: r.isNationalAverage ? `${cap(place)} (national average)` : place },
-    { key: 'housingSituation', label: 'Housing', step: 'welcome', value: HOUSING_LABEL[shelter.mode] },
+    { key: 'housingSituation', label: 'Housing', edit: 'housing', value: HOUSING_LABEL[shelter.mode] },
     (shelter.mode === 'need_home' || shelter.mode === 'upgrade') &&
-      { key: 'neighbourhoodType', label: 'Neighbourhood', step: 'welcome', value: DENSITY_LABEL[input.densityTierId] },
+      { key: 'neighbourhoodType', label: 'Neighbourhood', edit: 'housing', value: DENSITY_LABEL[input.densityTierId] },
     shelter.mode === 'upgrade' &&
-      { key: 'currentHomeValue', label: 'Current home value', step: 'welcome',
+      { key: 'currentHomeValue', label: 'Current home value', edit: 'housing',
         value: input.currentHomeValue > 0 ? money(input.currentHomeValue) : 'Not entered' },
-    { key: 'birthDate', label: 'Age', step: 'personal', value: `${input.currentAge}` },
-    { key: 'socialIntensity', label: 'Lifestyle intensity', step: 'lifestyle', value: cap(input.lifestyleTier) },
-    { key: 'hobbyRanking', label: 'Lifestyle categories counted', step: 'lifestyle', value: categories || 'None' },
-    { key: 'financialSecurity', label: 'Financial security', step: 'financial', value: cap(input.financialTier) },
-    { key: 'investmentApproach', label: 'Investment approach', step: 'financial',
+    { key: 'birthDate', label: 'Age', edit: 'age', value: `${input.currentAge}` },
+    { key: 'socialIntensity', label: 'Lifestyle intensity', edit: 'lifestyle', value: cap(input.lifestyleTier) },
+    { key: 'hobbyRanking', label: 'Lifestyle categories counted', edit: 'lifestyle', value: categories || 'None' },
+    { key: 'financialSecurity', label: 'Financial security', edit: 'financial', value: cap(input.financialTier) },
+    { key: 'investmentApproach', label: 'Investment approach', edit: 'financial',
       value: `${cap(input.investmentApproach)} (${ratePct}% real return)` },
     { key: 'netWorth', label: 'Starting net worth', to: '/dashboard?view=snapshot',
       value: money(r.currentNetWorth), status: hasAssets ? 'told' : 'missing' },
-    { key: 'income', label: 'Income', to: '/gameboard',
+    { key: 'income', label: 'Income', edit: 'income',
       value: r.savings.incomeAssumed ? 'Not added' : `${money(r.savings.effectiveIncome)} / yr`,
       status: r.savings.incomeAssumed ? 'missing' : 'told' },
   ].filter(Boolean)
+
+  // ── 5. Levers ─────────────────────────────────────────────────────
+  // ~50 recalculations — memoized so it only reruns when the inputs change.
+  const levers = useMemo(
+    () => computeLevers(input, { priorityRanking: profile.priorityRanking, defaultsUsed, displayCurrency }),
+    [input, profile.priorityRanking, defaultsUsed, displayCurrency],
+  )
+  const fits = levers.filter((l) => l.status === 'fits').slice(0, 3)
+  const tradeoffs = levers.filter((l) => l.status === 'tradeoff').slice(0, 3)
 
   // ── 6. Confidence ─────────────────────────────────────────────────
   const notes = []
@@ -125,7 +138,7 @@ export default function TrueNumberDetail({ profile }) {
           {r.yearsToTarget === 0
             ? "you're already there."
             : r.yearsToTarget == null
-              ? 'add your income in Play to see a timeline.'
+              ? 'add your income in Snapshot to see a timeline.'
               : `about ${fmtYears(r.yearsToTarget)} to close the gap at your current pace.`}
         </p>
       </section>
@@ -196,9 +209,15 @@ export default function TrueNumberDetail({ profile }) {
                 </span>
                 <span className="flex items-center gap-3 shrink-0">
                   <StatusChip status={status} />
-                  <Link to={row.to || `/wizard?step=${row.step}`} className="text-xs font-semibold text-grape-700">
-                    {status === 'missing' ? 'Add' : 'Edit'}
-                  </Link>
+                  {row.edit ? (
+                    <button type="button" onClick={() => setEditing(row.edit)} className="text-xs font-semibold text-grape-700">
+                      {status === 'missing' ? 'Add' : 'Edit'}
+                    </button>
+                  ) : (
+                    <Link to={row.to} className="text-xs font-semibold text-grape-700">
+                      {status === 'missing' ? 'Add' : 'Edit'}
+                    </Link>
+                  )}
                 </span>
               </li>
             )
@@ -206,14 +225,23 @@ export default function TrueNumberDetail({ profile }) {
         </ul>
       </section>
 
-      {/* 5. Levers — placeholder until the lever engine */}
-      <section className="card border-dashed">
+      {/* 5. Levers — measured by the lever engine */}
+      <section className="card">
         <h2 className="font-display text-lg font-bold">What would move your number</h2>
-        <p className="mt-2 text-sm text-ink-500">
-          Soon you'll see the three changes that would lower your number most — like a different neighbourhood or a
-          calmer lifestyle — and what each one is worth. For now, try changes in Play.
-        </p>
-        <Link to="/gameboard" className="mt-3 inline-block btn-secondary">Open Play →</Link>
+        <p className="mt-1 text-sm text-ink-500">Each one is a single change, measured on your own numbers.</p>
+        {fits.length > 0 && (
+          <>
+            <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-brand-700">Fits your priorities</p>
+            <ul className="mt-2 space-y-2">{fits.map((l) => <LeverRow key={l.id} lever={l} money={money} />)}</ul>
+          </>
+        )}
+        {tradeoffs.length > 0 && (
+          <>
+            <p className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-peach-600">Trade-offs to consider</p>
+            <ul className="mt-2 space-y-2">{tradeoffs.map((l) => <LeverRow key={l.id} lever={l} money={money} />)}</ul>
+          </>
+        )}
+        <Link to="/gameboard" className="mt-4 inline-block btn-secondary">Try changes in Play →</Link>
       </section>
 
       {/* 6. Confidence */}
@@ -224,7 +252,38 @@ export default function TrueNumberDetail({ profile }) {
           {notes.map((n, i) => <li key={i} className="flex gap-2"><span className="text-ink-300">·</span><span>{n}</span></li>)}
         </ul>
       </section>
+
+      {editing && (
+        <TrueNumberEditModal section={editing} profile={profile} onClose={() => setEditing(null)} />
+      )}
     </div>
+  )
+}
+
+function LeverRow({ lever: l, money }) {
+  return (
+    <li className="rounded-2xl border border-slate-200 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">{l.title}</p>
+          <p className="text-xs text-ink-500 mt-0.5">{l.detail}</p>
+        </div>
+        <div className="text-right shrink-0">
+          {l.trueNumberDelta > 0 && <p className="font-display font-extrabold text-brand-700">−{money(l.trueNumberDelta)}</p>}
+          {l.yearsSaved > 0 && <p className="text-[11px] text-ink-500">{fmtYears(l.yearsSaved)} sooner</p>}
+        </div>
+      </div>
+      {(l.reasons.length > 0 || l.youChose) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {l.reasons.map((r) => (
+            <span key={r} className="rounded-full bg-peach-400/20 text-peach-600 px-2 py-0.5 text-[11px]">{r}</span>
+          ))}
+          {l.youChose && (
+            <span className="rounded-full bg-slate-100 text-ink-500 px-2 py-0.5 text-[11px]">{l.youChose}</span>
+          )}
+        </div>
+      )}
+    </li>
   )
 }
 

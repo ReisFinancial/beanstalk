@@ -15,8 +15,6 @@ function Logo({ className = '' }) {
 const navItems = [
   { key: 'home',     to: '/dashboard',                label: 'Dashboard', icon: '🏡' },
   { key: 'snapshot', to: '/dashboard?view=snapshot',  label: 'Snapshot',  icon: '🔷' },
-  { key: 'goals',    to: '/dashboard?view=goals',     label: 'Goals',     icon: '🎯' },
-  { key: 'money',    to: '/dashboard?view=money',     label: 'Money',     icon: '💸' },
   { key: 'play',     to: '/gameboard',                label: 'Play',      icon: '🎮' },
   { key: 'profile',  to: '/dashboard?view=profile',   label: 'Profile',   icon: '🙂' },
 ]
@@ -34,6 +32,8 @@ export default function Layout() {
 
   const isActive = (key) => {
     if (key === 'play') return onGameboard
+    // Money was merged into Snapshot — old ?view=money links light up Snapshot.
+    if (key === 'snapshot') return onDashboard && (currentView === 'snapshot' || currentView === 'money')
     return onDashboard && currentView === key
   }
 
@@ -95,7 +95,7 @@ export default function Layout() {
         className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200
                    pb-[env(safe-area-inset-bottom)]"
       >
-        <ul className="grid grid-cols-6">
+        <ul className="grid grid-cols-4">
           {navItems.map((item) => {
             const active = isActive(item.key)
             return (

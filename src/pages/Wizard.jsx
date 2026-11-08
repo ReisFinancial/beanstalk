@@ -28,12 +28,12 @@ const GOAL_CATEGORIES = [
   { id: 'financial', label: 'Financial status',  emoji: '💫' },
 ]
 
-const SOCIAL_LEVELS = [
+export const SOCIAL_LEVELS = [
   { id: 'quiet',    label: 'Quiet — a few close friends' },
   { id: 'balanced', label: 'Balanced — mix of quiet + social' },
   { id: 'high',     label: 'High — social calendar, frequent hosting' },
 ]
-const SECURITY_LEVELS = [
+export const SECURITY_LEVELS = [
   { id: 'basic',       label: 'Basic — bills covered, some savings' },
   { id: 'comfortable', label: 'Comfortable — no worries, room to enjoy' },
   { id: 'abundant',    label: 'Abundant — generous, generational reach' },
@@ -43,7 +43,7 @@ const RETIREMENT_LIFESTYLES = [
   { id: 'same',     label: 'Same as today' },
   { id: 'upgraded', label: 'Upgraded — travel, hobbies, more' },
 ]
-const INVESTMENT_APPROACHES = [
+export const INVESTMENT_APPROACHES = [
   { id: 'conservative', label: 'Conservative' },
   { id: 'balanced',     label: 'Balanced' },
   { id: 'ambitious',    label: 'Ambitious' },
@@ -66,7 +66,7 @@ const CONTENTMENT_TO_TRACK = {
 //   upgrade       → upgrade delta (new price − current home value) + carry
 //   own_ideal     → ongoing carrying cost only, no capital ask
 //   prefer_rent   → no capital ask, no carry; substitute annual rent line
-const HOUSING_OPTIONS = [
+export const HOUSING_OPTIONS = [
   { id: 'need_home',   emoji: '🏡', label: "Don't own yet",         caption: "I'll be buying my ideal home." },
   { id: 'upgrade',     emoji: '🏗️', label: 'Own — want to upgrade', caption: 'I want to trade up to a better home.' },
   { id: 'own_ideal',   emoji: '🏠', label: 'Already ideal',         caption: 'My home is already the one I want.' },
@@ -76,9 +76,9 @@ const HOUSING_OPTIONS = [
 // Purchase-path situations need a neighbourhood follow-up so the model
 // can look up the right dwelling dataset once we have one. Owners with
 // their ideal home already or lifelong renters skip this question.
-const HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD = new Set(['need_home', 'upgrade'])
+export const HOUSING_SITUATIONS_NEEDING_NEIGHBOURHOOD = new Set(['need_home', 'upgrade'])
 
-const NEIGHBOURHOOD_OPTIONS = [
+export const NEIGHBOURHOOD_OPTIONS = [
   { id: 'urban',    emoji: '🏙️', label: 'Urban',   caption: 'Downtown, close to the core.' },
   { id: 'suburbs',  emoji: '🏘️', label: 'Suburbs', caption: 'Walking distance to everything.' },
   { id: 'rural',    emoji: '🌾', label: 'Rural',   caption: 'You need a car to go everywhere.' },
@@ -483,7 +483,7 @@ function StepPersonal({ profile, updateSection }) {
 // current province/state are listed first as a convenience; any listed
 // metro can be picked, plus a national-average option for "somewhere else".
 // Stored as a string id on profile.personal.idealCityId ('' = not chosen).
-function IdealCityPicker({ country, region, value, onChange }) {
+export function IdealCityPicker({ country, region, value, onChange }) {
   const near = metrosNear(country, region)
   const nearIds = new Set(near.map((c) => c.id))
   const byName = (a, b) => a.name.localeCompare(b.name)
@@ -596,7 +596,7 @@ function defaultTitleFor(category, g) {
 // Binds a single goal per category to profile.goals. Creates the goal on
 // the first change; patches it in place afterward. Also keeps the goal's
 // id at the tail of profile.priorities so Priorities step picks it up.
-function useSingleGoal(profile, setGoals, setPriorities, category) {
+export function useSingleGoal(profile, setGoals, setPriorities, category) {
   const goals = profile.goals || []
   const existing = goals.find((g) => g.category === category) || null
 
@@ -620,7 +620,7 @@ function useSingleGoal(profile, setGoals, setPriorities, category) {
 // Reorderable list of hobby templates. Reconciles stored order with the
 // current template set on each render so a template added/removed later
 // slots in without breaking a partially-saved ranking.
-function HobbyRanker({ ranking, onChange }) {
+export function HobbyRanker({ ranking, onChange }) {
   const templateIds = HOBBY_TEMPLATES.map((t) => t.id)
   const stored = ranking || []
   const order = [
